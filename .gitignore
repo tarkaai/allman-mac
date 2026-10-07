@@ -1,0 +1,17 @@
+# XcodeGen output — regenerate with `xcodegen generate` (or `scripts/build.sh`)
+Allman.xcodeproj/
+build/
+dist/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+.DS_Store
+
+# The real allman CLI binary is copied in at build time; never commit it.
+Sources/Allman/Resources/allman
+
+# Local allman store (per-user message data, has its own git history)
+.allman/
+
+# Claude Code local settings
+.claude/

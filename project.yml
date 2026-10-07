@@ -1,0 +1,89 @@
+name: Allman
+options:
+  bundleIdPrefix: sh.allman
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    DEVELOPMENT_TEAM: ""
+    ENABLE_HARDENED_RUNTIME: NO
+    SWIFT_STRICT_CONCURRENCY: minimal
+    DEAD_CODE_STRIPPING: YES
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+targets:
+  Allman:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/Allman
+        excludes:
+          - "Resources/allman"
+          - "Resources/README.md"
+    info:
+      path: Sources/Allman/Info.plist
+      properties:
+        CFBundleName: Allman
+        CFBundleDisplayName: Allman
+        CFBundleIdentifier: sh.allman.mac
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSUIElement: true
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        LSApplicationCategoryType: public.app-category.productivity
+        NSHumanReadableCopyright: "© 2026 Tarka Ventures, Inc. MIT License."
+        NSSupportsAutomaticTermination: false
+        NSSupportsSuddenTermination: false
+        NSUserNotificationAlertStyle: alert
+    entitlements:
+      path: Sources/Allman/Allman.entitlements
+      properties:
+        com.apple.security.app-sandbox: false
+        com.apple.security.automation.apple-events: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: sh.allman.mac
+        PRODUCT_NAME: Allman
+        ENABLE_TESTABILITY: YES
+        COMBINE_HIDPI_IMAGES: YES
+    postBuildScripts:
+      - name: Embed allman CLI
+        script: |
+          "${SRCROOT}/scripts/embed-allman.sh"
+        basedOnDependencyAnalysis: false
+  AllmanTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/AllmanTests
+        excludes: ["Fixtures"]
+      - path: Tests/AllmanTests/Fixtures
+        type: folder
+    dependencies:
+      - target: Allman
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: sh.allman.mac.tests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  Allman:
+    build:
+      targets:
+        Allman: all
+        AllmanTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - AllmanTests
+    archive:
+      config: Release

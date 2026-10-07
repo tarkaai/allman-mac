@@ -1,0 +1,6 @@
+{"urn":"urn:li:messagingMessage:2-MSG1","timestamp":1791120000000,"fromUrn":"urn:li:fsd_profile:ACoAAME","fromName":"Sam Example","isFromMe":true,"body":"Hey Jamie! Quick question about the launch.","reactions":[],"attachments":[],"originToken":"abc"}
+
+{"urn":"urn:li:fs_event:(2-TESTCONV==,2-MSG2)","timestamp":1791123000000,"fromUrn":"urn:li:fsd_profile:ACoAATEST","fromName":"Jamie Rivera","isFromMe":false,"body":"","reactions":[{"emoji":"👍","count":1,"hasUserReacted":false}],"attachments":[{"type":"post_share","authorName":"Someone Famous","raw":{"deep":{"nested":true}}}],"originToken":null}
+not json at all
+{"urn":"urn:li:messagingMessage:2-MSG2","timestamp":1791123000000,"fromUrn":"urn:li:fsd_profile:ACoAATEST","fromName":"Jamie Rivera","isFromMe":false,"body":"Shared with commentary","reactions":[],"attachments":[],"originToken":null}
+{"urn":"urn:li:messagingMessage:2-MSG3","timestamp":1791126000000,"fromUrn":"urn:li:fsd_profile:ACoAATEST","fromName":"Jamie Rivera","isFromMe":false,"body":"Sure — Thursday works.\nTalk then!","reactions":[],"attachments":[],"originToken":null,"subject":null,"renderFormat":"DEFAULT"}

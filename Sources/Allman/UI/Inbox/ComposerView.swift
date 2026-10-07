@@ -43,7 +43,7 @@ struct ComposerView: View {
                     if inbox.isSending { ProgressView().controlSize(.small).frame(width: 16, height: 16) }
                     else { Image(systemName: "paperplane.fill") }
                 }
-                .buttonStyle(.glassProminent)
+                .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || inbox.isSending)
                 .help("Send (⌘↩)")

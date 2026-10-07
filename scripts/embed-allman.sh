@@ -29,6 +29,10 @@ if [[ -f "$dest" ]] && cmp -s "$src" "$dest"; then
   echo "allman already embedded (unchanged): $src"
   exit 0
 fi
-cp -f "$src" "$dest"
-chmod 755 "$dest"
+# Copy to a temp file and rename into place: overwriting an executable in place
+# while a previous build's copy is still running gets that process SIGKILLed.
+tmp="$(mktemp "${dest_dir}/.allman.XXXXXX")"
+cp -f "$src" "$tmp"
+chmod 755 "$tmp"
+mv -f "$tmp" "$dest"
 echo "embedded allman from $src → $dest"

@@ -83,7 +83,7 @@ struct StatusPanelView: View {
                 } icon: { Image(systemName: "person.crop.circle.badge.exclamationmark").foregroundStyle(.orange) }
                 HStack {
                     Button(engine.status == .loggingIn ? "Waiting…" : "Sign in to LinkedIn") { engine.login() }
-                        .buttonStyle(.glassProminent)
+                        .buttonStyle(.borderedProminent)
                         .disabled(engine.status == .loggingIn)
                     if model.account != nil {
                         Button("Open Inbox") { model.openInbox(convId: nil) }
@@ -115,7 +115,7 @@ struct StatusPanelView: View {
                     } label: {
                         Label(unread > 0 ? "Inbox · \(unread) unread" : "Open Inbox", systemImage: "tray.full").fixedSize()
                     }
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(.borderedProminent)
                     .keyboardShortcut("i", modifiers: .command)
                     Button {
                         engine.syncNow(from: "1d")

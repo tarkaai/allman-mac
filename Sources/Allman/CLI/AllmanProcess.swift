@@ -4,6 +4,9 @@
 // is captured for error reporting.
 
 import Foundation
+import os
+
+let cliLog = Logger(subsystem: "sh.allman.mac", category: "cli")
 
 struct AllmanError: LocalizedError {
     let command: String
@@ -89,16 +92,24 @@ final class AllmanProcess: @unchecked Sendable {
             self.stdout.fileHandleForReading.readabilityHandler = nil
             self.stderr.fileHandleForReading.readabilityHandler = nil
             self.lock.lock(); let err = self.stderrText; self.lock.unlock()
+            ChildRegistry.shared.unregister(p.processIdentifier)
+            cliLog.notice("pid \(p.processIdentifier) exited status \(p.terminationStatus) reason \(p.terminationReason == .uncaughtSignal ? "signal" : "exit", privacy: .public) (\(self.arguments.last ?? "", privacy: .public))")
             self.onExit?(p.terminationStatus, err)
         }
         try process.run()
+        ChildRegistry.shared.register(process.processIdentifier)
+        cliLog.notice("spawned pid \(self.process.processIdentifier) allman \(self.arguments.joined(separator: " "), privacy: .public)")
     }
 
     func terminate() {
         guard process.isRunning else { return }
+        cliLog.notice("terminating pid \(self.process.processIdentifier) (\(self.arguments.last ?? "", privacy: .public))")
         process.terminate() // SIGTERM — the CLI handles it and aborts its SSE stream
         DispatchQueue.global().asyncAfter(deadline: .now() + 3) { [process] in
-            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+            if process.isRunning {
+                cliLog.warning("pid \(process.processIdentifier) ignored SIGTERM, sending SIGKILL")
+                kill(process.processIdentifier, SIGKILL)
+            }
         }
     }
 
@@ -175,5 +186,56 @@ enum AllmanRunner {
         }
         if let data = raw.data(using: .utf8), let v = try? JSONDecoder().decode(T.self, from: data) { return v }
         throw AllmanError(command: arguments.first ?? "", exitCode: 0, stderr: "unexpected output: \(raw.prefix(200))")
+    }
+}
+
+
+/// Remembers the PIDs we spawned so a crashed or force-quit app can reap its
+/// orphaned `allman listen`/`sync` children on the next launch. macOS has no
+/// parent-death signal, so without this a `kill -9 Allman` leaves them running.
+final class ChildRegistry: @unchecked Sendable {
+    static let shared = ChildRegistry()
+    private let url = StorePaths.appSupportURL.appendingPathComponent("children.json")
+    private let lock = NSLock()
+
+    private func load() -> [Int32] {
+        guard let data = try? Data(contentsOf: url) else { return [] }
+        return (try? JSONDecoder().decode([Int32].self, from: data)) ?? []
+    }
+
+    private func save(_ pids: [Int32]) {
+        try? JSONEncoder().encode(pids).write(to: url, options: .atomic)
+    }
+
+    func register(_ pid: Int32) {
+        lock.lock(); defer { lock.unlock() }
+        var pids = load(); if !pids.contains(pid) { pids.append(pid) }; save(pids)
+    }
+
+    func unregister(_ pid: Int32) {
+        lock.lock(); defer { lock.unlock() }
+        save(load().filter { $0 != pid })
+    }
+
+    /// Kill recorded children from a previous run that are still alive and still allman.
+    func reapOrphans() {
+        lock.lock(); defer { lock.unlock() }
+        var survivors: [Int32] = []
+        for pid in load() {
+            guard kill(pid, 0) == 0 else { continue } // gone
+            var buf = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN)) // PROC_PIDPATHINFO_MAXSIZE
+            let n = proc_pidpath(pid, &buf, UInt32(buf.count))
+            let path = n > 0 ? String(cString: buf) : ""
+            guard path.hasSuffix("/allman") else { continue } // PID reused by something else
+            cliLog.warning("reaping orphaned allman pid \(pid) from a previous run")
+            kill(pid, SIGTERM)
+            survivors.append(pid)
+        }
+        save([])
+        if !survivors.isEmpty {
+            DispatchQueue.global().asyncAfter(deadline: .now() + 3) {
+                for pid in survivors where kill(pid, 0) == 0 { kill(pid, SIGKILL) }
+            }
+        }
     }
 }

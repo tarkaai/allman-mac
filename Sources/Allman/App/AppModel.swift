@@ -64,6 +64,7 @@ final class AppModel {
     // MARK: Bootstrap
 
     func bootstrap() async {
+        ChildRegistry.shared.reapOrphans()
         notifier.setup()
         storeURL = StorePaths.storeURL
         binaryURL = AllmanBinary.resolve()

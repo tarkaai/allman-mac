@@ -9,6 +9,9 @@
 import AppKit
 import Foundation
 import Observation
+import os
+
+private let engineLog = Logger(subsystem: "sh.allman.mac", category: "sync")
 
 @MainActor
 @Observable
@@ -133,6 +136,7 @@ final class SyncEngine {
             log.addCoalescing(ActivityItem(.network, "Offline", detail: "Will resume when the network is back"))
             return
         }
+        engineLog.notice("engine.start()")
         runSync(from: "1d")
         startListen()
         restartPeriodicSync()
@@ -140,6 +144,7 @@ final class SyncEngine {
     }
 
     func stop() {
+        engineLog.notice("engine.stop() status=\(self.status.label, privacy: .public)")
         running = false
         suppressReconnect = true
         reconnectTask?.cancel(); reconnectTask = nil
@@ -350,6 +355,7 @@ final class SyncEngine {
     // MARK: Environment changes
 
     private func networkChanged(online: Bool, interface: String) {
+        engineLog.notice("network changed online=\(online) iface=\(interface, privacy: .public) running=\(self.running)")
         networkInterface = interface
         guard running else { return }
         if online {

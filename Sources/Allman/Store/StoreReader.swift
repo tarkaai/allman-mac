@@ -97,8 +97,21 @@ struct StoreReader: Sendable {
 
     func loadSnapshot(accountDir: URL, convId: String) -> ConversationSnapshot? {
         guard let record = readRecord(accountDir: accountDir, convId: convId) else { return nil }
-        let last = readLastMessage(accountDir: accountDir, convId: convId)
-        return ConversationSnapshot(record: record, lastMessage: last)
+        let tail = readTail(accountDir: accountDir, convId: convId)
+        return ConversationSnapshot(record: record, lastMessage: tail.last, inboundTimestamps: tail.inbound)
+    }
+
+    /// Newest message plus the inbound timestamps from the newest month file —
+    /// enough to count "messages since you last read" without loading history.
+    func readTail(accountDir: URL, convId: String) -> (last: Message?, inbound: [Int64]) {
+        let files = messageFiles(accountDir: accountDir, convId: convId)
+        for file in files.reversed() {
+            let msgs = Self.dedupe(Self.parseJSONL(file).sorted { $0.timestamp < $1.timestamp })
+            guard let newest = msgs.last else { continue }
+            let inbound = msgs.filter { !$0.isFromMe }.suffix(100).map(\.timestamp)
+            return (newest, Array(inbound))
+        }
+        return (nil, [])
     }
 
     // MARK: Messages
@@ -168,6 +181,14 @@ struct ConversationSnapshot: Identifiable, Hashable {
     var id: String { record.convId }
     let record: ConversationRecord
     let lastMessage: Message?
+    /// Timestamps of recent inbound messages (newest month), ascending.
+    let inboundTimestamps: [Int64]
+
+    init(record: ConversationRecord, lastMessage: Message?, inboundTimestamps: [Int64] = []) {
+        self.record = record
+        self.lastMessage = lastMessage
+        self.inboundTimestamps = inboundTimestamps
+    }
 
     /// Sort key: newest message wins, else LinkedIn's lastActivityAt.
     var activityDate: Date {

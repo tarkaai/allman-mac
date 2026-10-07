@@ -9,13 +9,13 @@ struct ConversationListView: View {
         Group {
             if rows.isEmpty && !inbox.isLoading {
                 ContentUnavailableView {
-                    Label(inbox.filter == .unread && inbox.searchText.isEmpty ? "All caught up" : "No matches", systemImage: inbox.filter == .unread ? "checkmark.circle" : "magnifyingglass")
+                    Label(emptyTitle(inbox), systemImage: inbox.filter == .unread ? "checkmark.circle" : "magnifyingglass")
                 } description: {
-                    Text(inbox.filter == .unread && inbox.searchText.isEmpty ? "No unread conversations." : "Try another name, headline, or phrase.")
+                    Text(inbox.searchText.isEmpty ? "Nothing matches this filter." : "Try another name, headline, or phrase.")
                 }
             } else {
                 List(rows, selection: Binding(get: { inbox.selectedConvId }, set: { inbox.select($0) })) { snap in
-                    ConversationRow(snapshot: snap, unread: inbox.isUnread(snap))
+                    ConversationRow(snapshot: snap, unreadCount: inbox.unreadCount(snap))
                         .tag(snap.record.convId)
                         .contextMenu {
                             if inbox.isUnread(snap) { Button("Mark as Read") { inbox.markSeen(snap.record.convId) } }
@@ -25,66 +25,96 @@ struct ConversationListView: View {
                 }
                 .listStyle(.sidebar)
                 .scrollEdgeEffectStyle(.soft, for: .top)
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    HStack {
-                        Text("\(inbox.snapshots.count) conversations")
-                        if inbox.unreadCount > 0 { Text("· \(inbox.unreadCount) unread") }
-                        Spacer()
-                        if inbox.isLoading { ProgressView().controlSize(.mini) }
-                    }
-                    .font(.caption).foregroundStyle(.secondary)
-                    .padding(.horizontal, 12).padding(.vertical, 6)
-                    .background(.bar)
-                }
             }
         }
-        .searchable(text: $inbox.searchText, placement: .sidebar, prompt: "Search people and messages")
+        .safeAreaInset(edge: .top, spacing: 0) {
+            HStack {
+                StatusBadge(status: model.engine.status, syncing: model.engine.isSyncing)
+                Spacer()
+                Text(countText(inbox))
+                    .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+            }
+            .padding(.horizontal, 12).padding(.top, 2).padding(.bottom, 6)
+        }
+        .searchable(text: $inbox.searchText, placement: .sidebar, prompt: "Search")
         .toolbar {
             ToolbarItem(placement: .automatic) {
-                Button {
-                    withAnimation { inbox.filter = inbox.filter == .unread ? .all : .unread }
+                Menu {
+                    Picker("Filter", selection: $inbox.filter) {
+                        ForEach(InboxModel.Filter.allCases) { f in
+                            Label(f == .unread && inbox.unreadCount > 0 ? "Unread (\(inbox.unreadCount))" : f.rawValue, systemImage: f.symbol).tag(f)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                    Divider()
+                    Button("Mark All as Read") { inbox.markAllSeen() }.disabled(inbox.unreadCount == 0)
                 } label: {
-                    Label(inbox.filter == .unread ? "Showing unread" : "Show unread only",
-                          systemImage: inbox.filter == .unread ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                    Label("Filter", systemImage: inbox.filter == .all ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
                 }
-                .help(inbox.filter == .unread ? "Showing unread only (⇧⌘U)" : "Show unread only (⇧⌘U)")
-                .badge(inbox.filter == .unread ? 0 : inbox.unreadCount)
+                .help(inbox.filter == .all ? "Filter conversations" : "Filtering: \(inbox.filter.rawValue)")
             }
         }
+    }
+
+    private func emptyTitle(_ inbox: InboxModel) -> String {
+        if !inbox.searchText.isEmpty { return "No matches" }
+        switch inbox.filter {
+        case .unread: return "All caught up"
+        case .needsReply: return "Nothing waiting on you"
+        case .awaitingReply: return "No open threads"
+        default: return "No conversations"
+        }
+    }
+
+    private func countText(_ inbox: InboxModel) -> String {
+        if inbox.filter != .all || !inbox.searchText.isEmpty {
+            return "\(inbox.filtered.count) of \(inbox.snapshots.count)"
+        }
+        return inbox.unreadCount > 0 ? "\(inbox.unreadCount) unread · \(inbox.snapshots.count)" : "\(inbox.snapshots.count) conversations"
     }
 }
 
 struct ConversationRow: View {
     let snapshot: ConversationSnapshot
-    let unread: Bool
+    let unreadCount: Int
 
     var body: some View {
         let r = snapshot.record
+        let unread = unreadCount > 0
         HStack(alignment: .top, spacing: 10) {
-            AvatarView(url: r.avatarURL, name: r.displayName, size: 38)
+            AvatarView(url: r.avatarURL, name: r.displayName, size: 40)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(r.displayName)
                         .font(.body.weight(unread ? .semibold : .regular))
                         .lineLimit(1)
-                    if r.isVerified == true { Image(systemName: "checkmark.seal.fill").font(.caption2).foregroundStyle(.blue) }
                     Spacer(minLength: 6)
-                    Text(Fmt.relative(snapshot.activityDate))
+                    Text(Fmt.listTime(snapshot.activityDate))
                         .font(.caption)
-                        .foregroundStyle(unread ? Color.accentColor : .secondary)
+                        .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }
-                if let m = snapshot.lastMessage {
-                    Text((m.isFromMe ? "You: " : "") + m.previewText.replacingOccurrences(of: "\n", with: " "))
-                        .font(.callout)
-                        .foregroundStyle(unread ? .primary : .secondary)
-                        .lineLimit(2)
-                } else if let h = r.headline {
-                    Text(h).font(.callout).foregroundStyle(.tertiary).lineLimit(2)
+                HStack(alignment: .top, spacing: 6) {
+                    if let m = snapshot.lastMessage {
+                        Text((m.isFromMe ? "You: " : "") + m.previewText.replacingOccurrences(of: "\n", with: " "))
+                            .font(.callout)
+                            .foregroundStyle(unread ? .primary : .secondary)
+                            .lineLimit(2)
+                    } else if let h = r.headline {
+                        Text(h).font(.callout).foregroundStyle(.tertiary).lineLimit(2)
+                    }
+                    Spacer(minLength: 0)
+                    if unread {
+                        Text("\(unreadCount)")
+                            .font(.caption2.weight(.bold)).monospacedDigit()
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, unreadCount > 9 ? 6 : 0)
+                            .frame(minWidth: 20, minHeight: 20)
+                            .background(Color(nsColor: .systemBlue), in: Capsule())
+                            .padding(.top, 1)
+                    }
                 }
-            }
-            if unread {
-                Circle().fill(Color.accentColor).frame(width: 8, height: 8).padding(.top, 6)
             }
         }
         .padding(.vertical, 4)

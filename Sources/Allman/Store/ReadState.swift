@@ -38,10 +38,19 @@ struct ReadState: Codable {
 
     /// Unread = newest message is inbound, the user hasn't opened it since, and
     /// either LinkedIn flags it unread or it arrived after we first launched.
-    func isUnread(_ snap: ConversationSnapshot) -> Bool {
-        guard let last = snap.lastMessage, !last.isFromMe else { return false }
-        if last.timestamp <= (seenAt[snap.record.convId] ?? 0) { return false }
+    func isUnread(_ snap: ConversationSnapshot) -> Bool { unreadCount(snap) > 0 }
+
+    /// Messages since the user last read the thread (here or on linkedin.com).
+    func unreadCount(_ snap: ConversationSnapshot) -> Int {
+        guard let last = snap.lastMessage, !last.isFromMe else { return 0 }
+        let seen = seenAt[snap.record.convId] ?? 0
+        if last.timestamp <= seen { return 0 }
         let linkedInUnread = (snap.record.unreadCount ?? 0) > 0 || snap.record.read == false
-        return linkedInUnread || last.timestamp > baseline
+        guard linkedInUnread || last.timestamp > baseline else { return 0 }
+        let linkedInRead = snap.record.lastReadDate.map { Int64($0.timeIntervalSince1970 * 1000) } ?? 0
+        let watermark = max(seen, linkedInRead)
+        let counted = snap.inboundTimestamps.filter { $0 > watermark }.count
+        if counted > 0 { return counted }
+        return max(1, snap.record.unreadCount ?? 1)
     }
 }

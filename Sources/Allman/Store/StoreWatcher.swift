@@ -4,6 +4,9 @@
 // changed, debounced so a sync burst becomes one reload.
 
 import Foundation
+import os
+
+private let watchLog = Logger(subsystem: "sh.allman.mac", category: "store")
 
 final class StoreWatcher {
     struct Change {
@@ -53,7 +56,8 @@ final class StoreWatcher {
         ) else { return }
         stream = s
         FSEventStreamSetDispatchQueue(s, queue)
-        FSEventStreamStart(s)
+        let started = FSEventStreamStart(s)
+        watchLog.notice("watching \(self.root.path, privacy: .public) started=\(started)")
     }
 
     func stop() {
@@ -85,6 +89,7 @@ final class StoreWatcher {
             let change = self.pending
             self.pending = Change()
             guard !change.convIds.isEmpty || change.authChanged || change.structural else { return }
+            watchLog.notice("store changed: \(change.convIds.count) conversation(s) structural=\(change.structural) auth=\(change.authChanged)")
             DispatchQueue.main.async { self.onChange(change) }
         }
         debounce = work

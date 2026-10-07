@@ -8,7 +8,7 @@ struct InboxWindow: View {
         @Bindable var inbox = model.inbox
         NavigationSplitView {
             ConversationListView()
-                .navigationSplitViewColumnWidth(min: 280, ideal: 330, max: 440)
+                .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 400)
         } detail: {
             if let snap = inbox.selected {
                 ThreadView(snapshot: snap)
@@ -29,10 +29,6 @@ struct InboxWindow: View {
         }
         .navigationTitle("Inbox")
         .toolbar {
-            ToolbarItem(placement: .status) {
-                StatusBadge(status: model.engine.status, syncing: model.engine.isSyncing)
-            }
-            ToolbarSpacer(.fixed, placement: .primaryAction)
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
                     model.engine.syncNow(from: "1d")

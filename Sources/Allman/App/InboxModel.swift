@@ -8,8 +8,21 @@ import Observation
 @Observable
 final class InboxModel {
     enum Filter: String, CaseIterable, Identifiable {
-        case all = "All", unread = "Unread"
+        case all = "All"
+        case unread = "Unread"
+        case needsReply = "Needs my reply"
+        case awaitingReply = "Awaiting their reply"
+        case firstDegree = "1st-degree connections"
         var id: String { rawValue }
+        var symbol: String {
+            switch self {
+            case .all: return "tray.full"
+            case .unread: return "envelope.badge"
+            case .needsReply: return "arrowshape.turn.up.left"
+            case .awaitingReply: return "paperplane"
+            case .firstDegree: return "person.2"
+            }
+        }
     }
 
     private(set) var snapshots: [ConversationSnapshot] = []
@@ -18,10 +31,14 @@ final class InboxModel {
     private(set) var isLoading = false
     private(set) var loadingThread: Set<String> = []
     private(set) var backfilling: Set<String> = []
-    var readState = ReadState.load()
-    var selectedConvId: String?
-    var searchText = ""
-    var filter: Filter = .all
+    var readState = ReadState.load() { didSet { recompute() } }
+    var selectedConvId: String? { didSet { recompute() } }
+    var searchText = "" { didSet { recompute() } }
+    var filter: Filter = .all { didSet { recompute() } }
+    /// Derived, recomputed only when inputs change — cheap to read from views.
+    private(set) var filtered: [ConversationSnapshot] = []
+    private(set) var unread: [ConversationSnapshot] = []
+    private(set) var unreadCount = 0
     var isSending = false
     var composerError: String?
     var toast: String?
@@ -40,23 +57,34 @@ final class InboxModel {
 
     // MARK: Derived
 
-    var filtered: [ConversationSnapshot] {
+    private func recompute() {
         let q = searchText.trimmingCharacters(in: .whitespaces).lowercased()
-        return snapshots.filter { snap in
-            if filter == .unread && !readState.isUnread(snap) && snap.record.convId != selectedConvId { return false }
-            guard !q.isEmpty else { return true }
-            let r = snap.record
-            return r.displayName.lowercased().contains(q)
-                || (r.slug?.lowercased().contains(q) ?? false)
-                || (r.headline?.lowercased().contains(q) ?? false)
-                || (snap.lastMessage?.body.lowercased().contains(q) ?? false)
+        unread = snapshots.filter { readState.isUnread($0) }
+        unreadCount = unread.count
+        filtered = snapshots.filter { snap in
+            if snap.record.convId == selectedConvId { return q.isEmpty || matches(snap, q) }
+            switch filter {
+            case .all: break
+            case .unread: if !readState.isUnread(snap) { return false }
+            case .needsReply: if snap.lastMessage?.isFromMe != false { return false }
+            case .awaitingReply: if snap.lastMessage?.isFromMe != true { return false }
+            case .firstDegree: if snap.record.distance != "DISTANCE_1" { return false }
+            }
+            return q.isEmpty || matches(snap, q)
         }
     }
 
-    var unreadCount: Int { snapshots.reduce(0) { $0 + (readState.isUnread($1) ? 1 : 0) } }
-    var unread: [ConversationSnapshot] { snapshots.filter { readState.isUnread($0) } }
+    private func matches(_ snap: ConversationSnapshot, _ q: String) -> Bool {
+        let r = snap.record
+        return r.displayName.lowercased().contains(q)
+            || (r.slug?.lowercased().contains(q) ?? false)
+            || (r.headline?.lowercased().contains(q) ?? false)
+            || (snap.lastMessage?.body.lowercased().contains(q) ?? false)
+    }
+
     var selected: ConversationSnapshot? { selectedConvId.flatMap { byId[$0] } }
     func isUnread(_ snap: ConversationSnapshot) -> Bool { readState.isUnread(snap) }
+    func unreadCount(_ snap: ConversationSnapshot) -> Int { readState.unreadCount(snap) }
 
     // MARK: Loading
 
@@ -119,6 +147,7 @@ final class InboxModel {
         for snap in loaded { next[snap.record.convId] = snap }
         byId = next
         snapshots = next.values.sorted { $0.activityDate > $1.activityDate }
+        recompute()
 
         // Diff for notifications — only when we already had a snapshot set.
         guard !old.isEmpty else { return }
@@ -154,15 +183,41 @@ final class InboxModel {
 
     func markSeen(_ convId: String) {
         guard let snap = byId[convId] else { return }
+        let wasUnread = readState.isUnread(snap)
         let ts = snap.lastMessage?.timestamp ?? Int64(Date().timeIntervalSince1970 * 1000)
         readState.markSeen(convId, at: max(ts, Int64(Date().timeIntervalSince1970 * 1000)))
         readState.save()
+        // Mirror to linkedin.com through the CLI whenever LinkedIn still thinks it's unread.
+        let linkedInUnread = (snap.record.unreadCount ?? 0) > 0 || snap.record.read == false
+        if wasUnread || linkedInUnread { markReadOnLinkedIn(snap) }
     }
 
     func markAllSeen() {
         let now = Int64(Date().timeIntervalSince1970 * 1000)
-        for snap in snapshots where readState.isUnread(snap) { readState.markSeen(snap.record.convId, at: now) }
+        let targets = snapshots.filter { readState.isUnread($0) }
+        for snap in targets { readState.markSeen(snap.record.convId, at: now) }
         readState.save()
+        for snap in targets { markReadOnLinkedIn(snap) }
+    }
+
+    private var markReadInFlight: Set<String> = []
+
+    /// `allman read <target>` — the CLI owns the LinkedIn call and updates RECORD.json.
+    private func markReadOnLinkedIn(_ snap: ConversationSnapshot) {
+        guard let ctx = context else { return }
+        let convId = snap.record.convId
+        guard !markReadInFlight.contains(convId) else { return }
+        markReadInFlight.insert(convId)
+        Task { @MainActor in
+            defer { markReadInFlight.remove(convId) }
+            do {
+                _ = try await AllmanRunner.run(["read", snap.record.sendTarget, "--json"], context: ctx, timeout: 30)
+            } catch let err as AllmanError where err.stderr.contains("unknown command") {
+                toast = "Update the allman CLI to sync read state to LinkedIn."
+            } catch {
+                cliLog.error("mark read failed for \(convId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            }
+        }
     }
 
     // MARK: Writes (through the CLI)

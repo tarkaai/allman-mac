@@ -1,5 +1,7 @@
 import SwiftUI
 
+/// iMessage-style field: a rounded capsule with the send button inside.
+/// Return sends, Option-Return inserts a newline.
 struct ComposerView: View {
     @Environment(AppModel.self) private var model
     let convId: String
@@ -7,6 +9,10 @@ struct ComposerView: View {
 
     @State private var text = ""
     @FocusState private var focused: Bool
+
+    private var canSend: Bool {
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !model.inbox.isSending
+    }
 
     var body: some View {
         let inbox = model.inbox
@@ -16,40 +22,31 @@ struct ComposerView: View {
                     .font(.callout).foregroundStyle(.orange)
                     .textSelection(.enabled)
             }
-            HStack(alignment: .bottom, spacing: 8) {
-                ZStack(alignment: .topLeading) {
-                    TextEditor(text: $text)
-                        .font(.body)
-                        .scrollContentBackground(.hidden)
-                        .padding(.horizontal, 6).padding(.vertical, 4)
-                        .frame(minHeight: 44, maxHeight: 160)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .focused($focused)
-                        .onKeyPress(.return, phases: .down) { press in
-                            guard press.modifiers.contains(.command) else { return .ignored }
-                            send()
-                            return .handled
-                        }
-                    if text.isEmpty {
-                        Text("Message \(firstName)…  ⌘↩ to send")
-                            .foregroundStyle(.tertiary)
-                            .padding(.horizontal, 11).padding(.vertical, 12)
-                            .allowsHitTesting(false)
+            HStack(alignment: .bottom, spacing: 6) {
+                TextField("Message \(firstName)…", text: $text, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(.body)
+                    .lineLimit(1...8)
+                    .focused($focused)
+                    .onSubmit(send)
+                    .padding(.leading, 12).padding(.vertical, 7)
+                Button(action: send) {
+                    if inbox.isSending {
+                        ProgressView().controlSize(.small).frame(width: 26, height: 26)
+                    } else {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 24))
+                            .foregroundStyle(canSend ? Color(nsColor: .systemBlue) : Color.secondary.opacity(0.5))
                     }
                 }
-                .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-
-                Button(action: send) {
-                    if inbox.isSending { ProgressView().controlSize(.small).frame(width: 16, height: 16) }
-                    else { Image(systemName: "paperplane.fill") }
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || inbox.isSending)
-                .help("Send (⌘↩)")
+                .buttonStyle(.plain)
+                .disabled(!canSend)
+                .keyboardShortcut(.return, modifiers: .command)
+                .help("Send (Return)")
+                .padding(.trailing, 5).padding(.bottom, 4)
             }
-            Text("Sends through the allman CLI — rate-limited, and it checks for new replies first.")
-                .font(.caption2).foregroundStyle(.tertiary)
+            .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 19, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 19, style: .continuous).stroke(Color(nsColor: .separatorColor)))
         }
         .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 10)
         .onAppear { focused = true }
@@ -57,7 +54,7 @@ struct ComposerView: View {
 
     private func send() {
         let body = text
-        guard !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !model.inbox.isSending else { return }
+        guard canSend else { return }
         text = ""
         Task {
             let ok = await model.inbox.send(body, to: convId)

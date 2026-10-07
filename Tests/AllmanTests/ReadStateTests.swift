@@ -2,13 +2,33 @@ import XCTest
 @testable import Allman
 
 final class ReadStateTests: XCTestCase {
-    private func snapshot(lastFromMe: Bool, ts: Int64, unreadCount: Int = 0, read: Bool = true) -> ConversationSnapshot {
+    private func snapshot(lastFromMe: Bool, ts: Int64, unreadCount: Int = 0, read: Bool = true, inbound: [Int64]? = nil, lastReadAt: String? = nil) -> ConversationSnapshot {
+        let lr = lastReadAt.map { "\"\($0)\"" } ?? "null"
         let json = """
-        {"convId":"2-C","name":"Jamie","unreadCount":\(unreadCount),"read":\(read)}
+        {"convId":"2-C","name":"Jamie","unreadCount":\(unreadCount),"read":\(read),"lastReadAt":\(lr)}
         """
         let rec = try! JSONDecoder().decode(ConversationRecord.self, from: Data(json.utf8))
         let msg = Message(urn: "urn:li:messagingMessage:\(ts)", timestamp: ts, fromUrn: "x", fromName: "Jamie", isFromMe: lastFromMe, body: "hi", reactions: [], attachments: [], originToken: nil, subject: nil)
-        return ConversationSnapshot(record: rec, lastMessage: msg)
+        return ConversationSnapshot(record: rec, lastMessage: msg, inboundTimestamps: inbound ?? (lastFromMe ? [] : [ts]))
+    }
+
+    func testUnreadCountCountsInboundSinceWatermark() {
+        var state = ReadState()
+        state.baseline = 0
+        // Three inbound after the LinkedIn read marker, one before.
+        let snap = snapshot(lastFromMe: false, ts: 5_000_000, read: false, inbound: [1_000_000, 3_000_000, 4_000_000, 5_000_000], lastReadAt: "1970-01-01T00:33:20.000Z") // 2_000_000 ms
+        XCTAssertEqual(state.unreadCount(snap), 3)
+        state.markSeen("2-C", at: 4_000_000)
+        XCTAssertEqual(state.unreadCount(snap), 1)
+        state.markSeen("2-C", at: 5_000_000)
+        XCTAssertEqual(state.unreadCount(snap), 0)
+    }
+
+    func testUnreadCountFallsBackToLinkedInCount() {
+        var state = ReadState()
+        state.baseline = 0
+        let snap = snapshot(lastFromMe: false, ts: 5_000_000, unreadCount: 2, read: false, inbound: [])
+        XCTAssertEqual(state.unreadCount(snap), 2)
     }
 
     func testOldReadThreadsAreNotUnreadOnFirstLaunch() {

@@ -194,7 +194,6 @@ struct StatusBadge: View {
     var body: some View {
         HStack(spacing: 6) {
             Circle().fill(color).frame(width: 8, height: 8)
-                .overlay { if status.isHealthy { Circle().stroke(color.opacity(0.35), lineWidth: 3) } }
             Text(syncing && status.isHealthy ? "Syncing" : status.label)
                 .font(.caption.weight(.medium))
                 .lineLimit(1)

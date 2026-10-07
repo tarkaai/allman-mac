@@ -43,6 +43,35 @@ enum Fmt {
         return f.string(from: date)
     }
 
+    /// Conversation-list stamp, iMessage style: "11:23 AM" today, "Yesterday",
+    /// the weekday within the last week, else a short numeric date.
+    static func listTime(_ date: Date, now: Date = Date()) -> String {
+        let cal = Calendar.current
+        if cal.isDate(date, inSameDayAs: now) { return clockTime(date) }
+        if cal.isDateInYesterday(date) { return "Yesterday" }
+        if let week = cal.date(byAdding: .day, value: -6, to: cal.startOfDay(for: now)), date >= week {
+            let f = DateFormatter(); f.dateFormat = "EEEE"; return f.string(from: date)
+        }
+        let f = DateFormatter(); f.dateFormat = "M/d/yy"; return f.string(from: date)
+    }
+
+    /// Thread separator, iMessage style: "Today 11:01 AM", "Yesterday 4:28 PM", "Sun, Sep 27 at 9:10 AM".
+    static func threadStamp(_ date: Date, now: Date = Date()) -> (day: String, time: String) {
+        let cal = Calendar.current
+        let time = clockTime(date)
+        if cal.isDate(date, inSameDayAs: now) { return ("Today", time) }
+        if cal.isDateInYesterday(date) { return ("Yesterday", time) }
+        let f = DateFormatter()
+        if let week = cal.date(byAdding: .day, value: -6, to: cal.startOfDay(for: now)), date >= week {
+            f.dateFormat = "EEEE"
+        } else if cal.isDate(date, equalTo: now, toGranularity: .year) {
+            f.dateFormat = "EEE, MMM d"
+        } else {
+            f.dateFormat = "MMM d, yyyy"
+        }
+        return (f.string(from: date), time)
+    }
+
     static let clock: DateFormatter = {
         let f = DateFormatter()
         f.timeStyle = .short

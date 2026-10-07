@@ -20,6 +20,22 @@ final class FormattersTests: XCTestCase {
         XCTAssertEqual(Fmt.relativeSentence(now.addingTimeInterval(-120), now: now), "2m ago")
     }
 
+    func testListTime() {
+        let cal = Calendar.current
+        let now = cal.date(from: DateComponents(year: 2026, month: 10, day: 7, hour: 15, minute: 0))!
+        XCTAssertEqual(Fmt.listTime(cal.date(bySettingHour: 11, minute: 23, second: 0, of: now)!, now: now), Fmt.clockTime(cal.date(bySettingHour: 11, minute: 23, second: 0, of: now)!))
+        XCTAssertEqual(Fmt.listTime(now.addingTimeInterval(-86400), now: now), "Yesterday")
+        XCTAssertEqual(Fmt.listTime(now.addingTimeInterval(-3 * 86400), now: now), "Sunday")
+        XCTAssertEqual(Fmt.listTime(now.addingTimeInterval(-10 * 86400), now: now), "9/27/26")
+    }
+
+    func testThreadStamp() {
+        let now = Date()
+        let s = Fmt.threadStamp(now, now: now)
+        XCTAssertEqual(s.day, "Today")
+        XCTAssertEqual(s.time, Fmt.clockTime(now))
+    }
+
     func testDayLabel() {
         let now = Date()
         XCTAssertEqual(Fmt.dayLabel(now, now: now), "Today")

@@ -9,7 +9,7 @@ struct InboxWindow: View {
         @Bindable var inbox = model.inbox
         NavigationSplitView {
             ConversationListView()
-                .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 400)
+                .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 420)
         } detail: {
             if let draft = inbox.draft {
                 DraftThreadView(recipient: draft)

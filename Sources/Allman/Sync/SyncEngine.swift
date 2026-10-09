@@ -41,6 +41,21 @@ final class SyncEngine {
             }
         }
 
+        /// Short form for tight spots like the sidebar toolbar.
+        var shortLabel: String {
+            switch self {
+            case .idle: return "Starting"
+            case .noBinary: return "No CLI"
+            case .needsLogin: return "Sign in"
+            case .loggingIn: return "Signing in"
+            case .offline: return "Offline"
+            case .connecting: return "Connecting"
+            case .live: return "Live"
+            case .reconnecting: return "Reconnecting"
+            case .error: return "Error"
+            }
+        }
+
         /// Menu bar glyph for this state.
         var symbol: String {
             switch self {

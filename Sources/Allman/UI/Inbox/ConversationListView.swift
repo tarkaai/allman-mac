@@ -27,17 +27,20 @@ struct ConversationListView: View {
                 .scrollEdgeEffectStyle(.soft, for: .top)
             }
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            HStack {
-                StatusBadge(status: model.engine.status, syncing: model.engine.isSyncing)
-                Spacer()
-                Text(countText(inbox))
-                    .font(.caption).foregroundStyle(.secondary).monospacedDigit()
-            }
-            .padding(.horizontal, 12).padding(.top, 2).padding(.bottom, 6)
-        }
         .searchable(text: $inbox.searchText, placement: .sidebar, prompt: "Search")
+        .toolbar(removing: .sidebarToggle)
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                HStack(spacing: 8) {
+                    StatusBadge(status: model.engine.status, syncing: model.engine.isSyncing, compact: true)
+                        .help(model.engine.status.label)
+                    Text(countText(inbox))
+                        .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                        .lineLimit(1).fixedSize()
+                        .help("Conversations in the store")
+                }
+            }
+            .sharedBackgroundVisibility(.hidden)
             ToolbarItem(placement: .automatic) {
                 Button { NotificationCenter.default.post(name: .allmanCompose, object: nil) } label: {
                     Label("New Message", systemImage: "square.and.pencil")
@@ -76,9 +79,12 @@ struct ConversationListView: View {
 
     private func countText(_ inbox: InboxModel) -> String {
         if inbox.filter != .all || !inbox.searchText.isEmpty {
-            return "\(inbox.filtered.count) of \(inbox.snapshots.count)"
+            // Don't count the pinned selection as a match.
+            let pinned = inbox.selectedConvId.flatMap { id in inbox.filtered.first { $0.record.convId == id } }
+            let matches = inbox.filtered.count - (pinned != nil && inbox.filter == .unread && !inbox.isUnread(pinned!) ? 1 : 0)
+            return "\(matches) of \(inbox.snapshots.count)"
         }
-        return inbox.unreadCount > 0 ? "\(inbox.unreadCount) unread · \(inbox.snapshots.count)" : "\(inbox.snapshots.count) conversations"
+        return inbox.unreadCount > 0 ? "\(inbox.unreadCount) unread · \(inbox.snapshots.count)" : "\(inbox.snapshots.count)"
     }
 }
 
@@ -95,6 +101,7 @@ struct ConversationRow: View {
                 HStack(alignment: .firstTextBaseline) {
                     Text(r.displayName)
                         .font(.body.weight(unread ? .semibold : .regular))
+                        .foregroundStyle(.primary)
                         .lineLimit(1)
                     Spacer(minLength: 6)
                     Text(Fmt.listTime(snapshot.activityDate))

@@ -45,7 +45,9 @@ struct ComposerView: View {
                     .lineLimit(1...8)
                     .focused($focused)
                     .onSubmit(send)
-                    .padding(.leading, 12).padding(.vertical, 7)
+                    .padding(.leading, 12)
+                    .padding(.vertical, 6)
+                    .frame(minHeight: 36) // one line is exactly as tall as the send button
                 Button(action: send) {
                     Group {
                         if inbox.isSending {

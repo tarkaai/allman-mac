@@ -92,7 +92,7 @@ struct StatusPanelView: View {
             } else {
                 VStack(alignment: .leading, spacing: 4) {
                     Label {
-                        Text(engine.isSyncing ? (engine.syncProgress ?? "Syncing…") : (engine.lastSyncSummary ?? "Waiting for first sync"))
+                        Text(engine.isSyncing ? (engine.syncProgress ?? "Syncing…") : (engine.lastSyncSummary.map { $0.hasPrefix("Up to date") ? "Up to date" : $0 } ?? "Waiting for first sync"))
                             .lineLimit(2)
                     } icon: {
                         Image(systemName: "arrow.triangle.2.circlepath")
@@ -190,13 +190,15 @@ struct StatusPanelView: View {
 struct StatusBadge: View {
     let status: SyncEngine.Status
     let syncing: Bool
+    var compact = false
 
     var body: some View {
         HStack(spacing: 6) {
             Circle().fill(color).frame(width: 8, height: 8)
-            Text(syncing && status.isHealthy ? "Syncing" : status.label)
+            Text(syncing && status.isHealthy ? "Syncing" : (compact ? status.shortLabel : status.label))
                 .font(.caption.weight(.medium))
                 .lineLimit(1)
+                .fixedSize()
         }
         .padding(.horizontal, 9).padding(.vertical, 4)
         .background(color.opacity(0.12), in: Capsule())

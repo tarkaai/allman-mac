@@ -46,6 +46,8 @@ struct ConversationRecord: Codable, Identifiable, Hashable {
     let categories: [String]?
     let conversationUrl: String?
     let syncState: SyncState?
+    /// ISO timestamp of the last time the CLI refreshed this record from LinkedIn.
+    let fetchedAt: String?
 
     var displayName: String {
         let n = (name ?? "").trimmingCharacters(in: .whitespaces)

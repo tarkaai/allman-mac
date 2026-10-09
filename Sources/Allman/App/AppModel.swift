@@ -144,6 +144,10 @@ final class AppModel {
     // MARK: Notifications
 
     private func handleListen(_ ev: ListenEvent) {
+        if ev.event == "read_receipt" {
+            // listen already updated RECORD.json when the receipt was ours; FSEvents reloads it.
+            return
+        }
         if ev.event == "reaction" {
             // The CLI updates the stored message when it can resolve the thread; the
             // open thread is also re-pulled so a reaction removed on linkedin.com disappears here.

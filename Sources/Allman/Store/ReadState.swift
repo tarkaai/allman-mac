@@ -68,9 +68,14 @@ struct ReadState: Codable {
         guard let last = snap.lastMessage, !last.isFromMe else { return 0 }
         let seen = seenAt[snap.record.convId] ?? 0
         if last.timestamp <= seen { return 0 }
+        let linkedInRead = snap.record.lastReadDate.map { Int64($0.timeIntervalSince1970 * 1000) } ?? 0
+        // LinkedIn's own read state wins whenever it is at least as new as the message:
+        // either a read marker after the message, or a record refreshed after it that says read.
+        let fetchedMs = ISO8601.date(snap.record.fetchedAt).map { Int64($0.timeIntervalSince1970 * 1000) } ?? 0
+        let linkedInSaysRead = (snap.record.unreadCount ?? 0) == 0 && snap.record.read != false
+        if linkedInSaysRead && (linkedInRead >= last.timestamp || fetchedMs >= last.timestamp) { return 0 }
         let linkedInUnread = (snap.record.unreadCount ?? 0) > 0 || snap.record.read == false
         guard linkedInUnread || last.timestamp > baseline else { return 0 }
-        let linkedInRead = snap.record.lastReadDate.map { Int64($0.timeIntervalSince1970 * 1000) } ?? 0
         let watermark = max(seen, linkedInRead)
         let counted = snap.inboundTimestamps.filter { $0 > watermark }.count
         if counted > 0 { return counted }

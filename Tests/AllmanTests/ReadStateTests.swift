@@ -2,10 +2,11 @@ import XCTest
 @testable import Allman
 
 final class ReadStateTests: XCTestCase {
-    private func snapshot(lastFromMe: Bool, ts: Int64, unreadCount: Int = 0, read: Bool = true, inbound: [Int64]? = nil, lastReadAt: String? = nil) -> ConversationSnapshot {
+    private func snapshot(lastFromMe: Bool, ts: Int64, unreadCount: Int = 0, read: Bool = true, inbound: [Int64]? = nil, lastReadAt: String? = nil, fetchedAt: String? = nil) -> ConversationSnapshot {
         let lr = lastReadAt.map { "\"\($0)\"" } ?? "null"
+        let fa = fetchedAt.map { "\"\($0)\"" } ?? "null"
         let json = """
-        {"convId":"2-C","name":"Jamie","unreadCount":\(unreadCount),"read":\(read),"lastReadAt":\(lr)}
+        {"convId":"2-C","name":"Jamie","unreadCount":\(unreadCount),"read":\(read),"lastReadAt":\(lr),"fetchedAt":\(fa)}
         """
         let rec = try! JSONDecoder().decode(ConversationRecord.self, from: Data(json.utf8))
         let msg = Message(urn: "urn:li:messagingMessage:\(ts)", timestamp: ts, fromUrn: "x", fromName: "Jamie", isFromMe: lastFromMe, body: "hi", reactions: [], attachments: [], originToken: nil, subject: nil)
@@ -22,6 +23,23 @@ final class ReadStateTests: XCTestCase {
         XCTAssertEqual(state.unreadCount(snap), 1)
         state.markSeen("2-C", at: 5_000_000)
         XCTAssertEqual(state.unreadCount(snap), 0)
+    }
+
+    func testLinkedInReadAfterBaselineClearsUnread() {
+        var state = ReadState()
+        state.baseline = 1_000_000
+        // Arrived after first launch (would be unread by the baseline rule)…
+        let unread = snapshot(lastFromMe: false, ts: 2_000_000, unreadCount: 0, read: true)
+        XCTAssertTrue(state.isUnread(unread), "no fresh LinkedIn state yet")
+        // …but LinkedIn later says read with a marker after the message.
+        let readOnLinkedIn = snapshot(lastFromMe: false, ts: 2_000_000, unreadCount: 0, read: true, lastReadAt: "1970-01-01T00:50:00.000Z") // 3_000_000 ms
+        XCTAssertFalse(state.isUnread(readOnLinkedIn))
+        // …or a record refreshed after the message that reports read.
+        let refreshed = snapshot(lastFromMe: false, ts: 2_000_000, unreadCount: 0, read: true, fetchedAt: "1970-01-01T00:50:00.000Z")
+        XCTAssertFalse(state.isUnread(refreshed))
+        // A refresh that still reports unread keeps it unread.
+        let stillUnread = snapshot(lastFromMe: false, ts: 2_000_000, unreadCount: 1, read: false, fetchedAt: "1970-01-01T00:50:00.000Z")
+        XCTAssertTrue(state.isUnread(stillUnread))
     }
 
     func testUnreadCountFallsBackToLinkedInCount() {

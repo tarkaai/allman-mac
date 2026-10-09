@@ -32,6 +32,9 @@ struct ComposerView: View {
                 .padding(.horizontal, 12).padding(.vertical, 6)
                 .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .onAppear { focused = true }
+        .onChange(of: model.inbox.focusToken) { _, _ in
+            if model.inbox.focusTarget == .composer { focused = true }
+        }
             }
             if let err = inbox.composerError {
                 Label(err, systemImage: "exclamationmark.triangle.fill")
@@ -45,6 +48,7 @@ struct ComposerView: View {
                     .lineLimit(1...8)
                     .focused($focused)
                     .onSubmit(send)
+                    .onKeyPress(.escape) { model.inbox.requestFocus(.list); return .handled }
                     .padding(.leading, 12)
                     .padding(.vertical, 6)
                     .frame(minHeight: 36) // one line is exactly as tall as the send button
@@ -73,6 +77,9 @@ struct ComposerView: View {
         }
         .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 10)
         .onAppear { focused = true }
+        .onChange(of: model.inbox.focusToken) { _, _ in
+            if model.inbox.focusTarget == .composer { focused = true }
+        }
     }
 
     private func send() {

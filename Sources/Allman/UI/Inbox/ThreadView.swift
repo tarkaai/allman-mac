@@ -80,6 +80,11 @@ struct ThreadView: View {
             }
             .sharedBackgroundVisibility(.hidden)
             ToolbarItemGroup(placement: .primaryAction) {
+                Button { inbox.togglePin(convId) } label: {
+                    Label(inbox.isPinned(convId) ? "Unpin" : "Pin", systemImage: inbox.isPinned(convId) ? "pin.fill" : "pin")
+                }
+                .disabled(!inbox.isPinned(convId) && !inbox.canPinMore)
+                .help(inbox.isPinned(convId) ? "Unpin from the top of the sidebar (⇧⌘P)" : "Pin to the top of the sidebar (⇧⌘P)")
                 if snapshot.record.syncState?.fullyBackfilled != true {
                     Button { inbox.backfill(convId) } label: { Label("Load full history", systemImage: "clock.arrow.circlepath") }
                         .disabled(inbox.backfilling.contains(convId))

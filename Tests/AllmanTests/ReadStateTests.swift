@@ -69,3 +69,25 @@ final class ReadStateTests: XCTestCase {
         XCTAssertTrue(state.hasNotified("m599"))
     }
 }
+
+final class PinTests: XCTestCase {
+    func testToggleMoveAndCap() {
+        var s = ReadState()
+        for i in 0..<ReadState.maxPins { s.togglePin("c\(i)") }
+        XCTAssertEqual(s.pins.count, ReadState.maxPins)
+        s.togglePin("overflow")
+        XCTAssertFalse(s.isPinned("overflow"), "cap holds")
+        s.togglePin("c0")
+        XCTAssertFalse(s.isPinned("c0"))
+        s.togglePin("overflow")
+        XCTAssertTrue(s.isPinned("overflow"))
+        s.movePin("overflow", to: 0)
+        XCTAssertEqual(s.pins.first, "overflow")
+    }
+
+    func testDecodesWithoutPinsKey() throws {
+        let data = Data(#"{"seenAt":{},"baseline":1,"notified":[]}"#.utf8)
+        let s = try JSONDecoder().decode(ReadState.self, from: data)
+        XCTAssertEqual(s.pins, [])
+    }
+}

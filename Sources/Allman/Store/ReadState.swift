@@ -11,6 +11,8 @@ struct ReadState: Codable {
     var baseline: Int64 = Int64(Date().timeIntervalSince1970 * 1000)
     /// Message URNs already surfaced as notifications (bounded).
     var notified: [String] = []
+    /// Pinned conversation ids, in display order (Messages-style favorites).
+    var pinned: [String]? = []
 
     static let fileURL = StorePaths.appSupportURL.appendingPathComponent("read-state.json")
 
@@ -35,6 +37,27 @@ struct ReadState: Codable {
     }
 
     func hasNotified(_ urn: String) -> Bool { notified.contains(urn) }
+
+    static let maxPins = 9
+    var pins: [String] { pinned ?? [] }
+    func isPinned(_ convId: String) -> Bool { pins.contains(convId) }
+
+    mutating func togglePin(_ convId: String) {
+        var p = pins
+        if let i = p.firstIndex(of: convId) { p.remove(at: i) } else {
+            guard p.count < Self.maxPins else { return }
+            p.append(convId)
+        }
+        pinned = p
+    }
+
+    mutating func movePin(_ convId: String, to index: Int) {
+        var p = pins
+        guard let i = p.firstIndex(of: convId) else { return }
+        p.remove(at: i)
+        p.insert(convId, at: min(max(index, 0), p.count))
+        pinned = p
+    }
 
     /// Unread = newest message is inbound, the user hasn't opened it since, and
     /// either LinkedIn flags it unread or it arrived after we first launched.

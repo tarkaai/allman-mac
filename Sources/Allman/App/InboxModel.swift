@@ -39,6 +39,14 @@ final class InboxModel {
     private(set) var filtered: [ConversationSnapshot] = []
     private(set) var unread: [ConversationSnapshot] = []
     private(set) var unreadCount = 0
+    /// Pinned conversations in pin order (only those that still exist).
+    private(set) var pinnedSnapshots: [ConversationSnapshot] = []
+
+    enum FocusTarget { case list, composer, search }
+    /// Views observe this to move keyboard focus; bump `focusToken` to re-fire.
+    private(set) var focusTarget: FocusTarget = .list
+    private(set) var focusToken = 0
+    func requestFocus(_ target: FocusTarget) { focusTarget = target; focusToken += 1 }
     var isSending = false
     var composerError: String?
     var toast: String?
@@ -61,7 +69,12 @@ final class InboxModel {
         let q = searchText.trimmingCharacters(in: .whitespaces).lowercased()
         unread = snapshots.filter { readState.isUnread($0) }
         unreadCount = unread.count
+        pinnedSnapshots = readState.pins.compactMap { byId[$0] }
+        let pinSet = Set(readState.pins)
+        let browsing = q.isEmpty && filter == .all
         filtered = snapshots.filter { snap in
+            // Pinned threads live in the grid while browsing; searching/filtering shows them in the list.
+            if browsing && pinSet.contains(snap.record.convId) && snap.record.convId != selectedConvId { return false }
             if snap.record.convId == selectedConvId { return q.isEmpty || matches(snap, q) }
             switch filter {
             case .all: break
@@ -168,6 +181,46 @@ final class InboxModel {
         let msgs = await Task.detached(priority: .userInitiated) { reader.readMessages(accountDir: dir, convId: convId) }.value
         messages[convId] = msgs
         loadingThread.remove(convId)
+    }
+
+    // MARK: Pins
+
+    func isPinned(_ convId: String) -> Bool { readState.isPinned(convId) }
+    var canPinMore: Bool { readState.pins.count < ReadState.maxPins }
+
+    func togglePin(_ convId: String) {
+        readState.togglePin(convId)
+        readState.save()
+    }
+
+    func movePin(_ convId: String, to index: Int) {
+        readState.movePin(convId, to: index)
+        readState.save()
+    }
+
+    // MARK: Keyboard navigation
+
+    /// The rows the arrow keys walk: pinned first (grid order), then the list.
+    private var navigationOrder: [ConversationSnapshot] {
+        let q = searchText.trimmingCharacters(in: .whitespaces).isEmpty && filter == .all
+        return q ? pinnedSnapshots + filtered.filter { !readState.isPinned($0.record.convId) } : filtered
+    }
+
+    func selectNext(unreadOnly: Bool = false) { step(1, unreadOnly: unreadOnly) }
+    func selectPrevious(unreadOnly: Bool = false) { step(-1, unreadOnly: unreadOnly) }
+
+    private func step(_ delta: Int, unreadOnly: Bool) {
+        let rows = navigationOrder
+        guard !rows.isEmpty else { return }
+        let current = rows.firstIndex { $0.record.convId == selectedConvId }
+        var i = current.map { $0 + delta } ?? (delta > 0 ? 0 : rows.count - 1)
+        while i >= 0, i < rows.count {
+            if !unreadOnly || readState.isUnread(rows[i]) { select(rows[i].record.convId); return }
+            i += delta
+        }
+        if unreadOnly, let first = (delta > 0 ? rows : rows.reversed()).first(where: { readState.isUnread($0) }) {
+            select(first.record.convId) // wrap around
+        }
     }
 
     // MARK: Selection / read state

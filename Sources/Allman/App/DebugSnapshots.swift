@@ -26,6 +26,20 @@ enum DebugSnapshots {
             }
             let wanted = ProcessInfo.processInfo.environment["ALLMAN_SNAPSHOT_CONV"]?.lowercased()
             let named = wanted.flatMap { w in model.inbox.snapshots.first { $0.record.displayName.lowercased().contains(w) } }
+            // Temporarily pin threads named in ALLMAN_SNAPSHOT_PINS (comma-separated), restored before quitting.
+            let originalPins = model.inbox.readState.pins
+            if let pinNames = ProcessInfo.processInfo.environment["ALLMAN_SNAPSHOT_PINS"] {
+                for n in pinNames.split(separator: ",").map({ $0.trimmingCharacters(in: .whitespaces).lowercased() }) {
+                    if let snap = model.inbox.snapshots.first(where: { $0.record.displayName.lowercased().contains(n) }), !model.inbox.isPinned(snap.record.convId) {
+                        model.inbox.togglePin(snap.record.convId)
+                    }
+                }
+            }
+            // NSApp.terminate never returns, so restore explicitly before quitting (not via defer).
+            let restorePins = {
+                model.inbox.readState.pinned = originalPins
+                model.inbox.readState.save()
+            }
             let target = named ?? rich ?? model.inbox.unread.first ?? model.inbox.snapshots.first
             model.openInbox(convId: target?.record.convId)
             try? await Task.sleep(for: .seconds(4))
@@ -91,6 +105,7 @@ enum DebugSnapshots {
             panel.setContentSize(hosting.fittingSize)
             try? await Task.sleep(for: .seconds(1))
             capture(panel, to: out.appendingPathComponent("panel-login.png"))
+            restorePins()
             NSApp.terminate(nil)
         }
     }

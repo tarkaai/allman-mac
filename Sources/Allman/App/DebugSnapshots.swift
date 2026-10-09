@@ -39,6 +39,15 @@ enum DebugSnapshots {
                 try? await Task.sleep(for: .seconds(1))
                 capture(w, to: out.appendingPathComponent("inbox-unread.png"))
                 model.inbox.filter = .all
+                if ProcessInfo.processInfo.environment["ALLMAN_SNAPSHOT_COMPOSE"] != nil {
+                    NotificationCenter.default.post(name: .allmanCompose, object: nil)
+                    try? await Task.sleep(for: .seconds(6)) // local + CLI search
+                    if let sheet = w.attachedSheet ?? w.sheets.first ?? NSApp.windows.first(where: { $0.isVisible && $0 !== w && $0.level == w.level && $0.frame.width < w.frame.width }) {
+                        capture(sheet, to: out.appendingPathComponent("compose.png"))
+                    } else {
+                        capture(w, to: out.appendingPathComponent("compose.png")) // whole window incl. sheet
+                    }
+                }
             }
 
             let panel = NSWindow(contentRect: .zero, styleMask: [.borderless], backing: .buffered, defer: false)

@@ -44,7 +44,7 @@ struct AvatarView: View {
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
-        .task(id: url) {
+        .task(id: (url?.absoluteString ?? "") + "|" + name) { // re-run when the row shows someone else
             image = nil
             guard let url else { return }
             image = await ImageCache.shared.image(for: url)

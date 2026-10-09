@@ -5,7 +5,7 @@ import SwiftUI
 struct ComposeSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
-    @State private var query = ""
+    @State private var query = ProcessInfo.processInfo.environment["ALLMAN_SNAPSHOT_COMPOSE"] ?? ""
     @State private var remote: [PersonHit] = []
     @State private var searching = false
     @State private var remoteError: String?
@@ -47,24 +47,14 @@ struct ComposeSheet: View {
                         }
                     }
                 }
-                let conns = matchingConnections
-                if !conns.isEmpty {
-                    Section("Connections") {
-                        ForEach(conns) { c in
-                            personRow(name: c.name, subtitle: c.subtitle, avatar: nil) {
-                                if let slug = c.slug { start(DraftRecipient(slug: slug, name: c.name, headline: c.subtitle, avatarURL: nil)) }
+                let people = mergedPeople
+                if !people.isEmpty || remoteError != nil {
+                    Section(searching ? "People · searching LinkedIn…" : "People") {
+                        ForEach(people) { person in
+                            personRow(name: person.name, subtitle: person.subtitle, avatar: person.avatarURL, badge: person.badge) {
+                                if let slug = person.slug { start(DraftRecipient(slug: slug, name: person.name, headline: person.subtitle, avatarURL: person.avatarURL)) }
                             }
-                            .disabled(c.slug == nil)
-                        }
-                    }
-                }
-                if !remote.isEmpty || remoteError != nil {
-                    Section("LinkedIn") {
-                        ForEach(remote) { hit in
-                            personRow(name: hit.name, subtitle: [hit.headline, hit.location].compactMap { $0 }.joined(separator: " · "), avatar: hit.avatarURL, badge: hit.distanceLabel) {
-                                if let slug = hit.slug { start(DraftRecipient(slug: slug, name: hit.name, headline: hit.headline, avatarURL: hit.avatarURL)) }
-                            }
-                            .disabled(hit.slug == nil)
+                            .disabled(person.slug == nil)
                         }
                         if let remoteError {
                             Label(remoteError, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.secondary)
@@ -83,6 +73,7 @@ struct ComposeSheet: View {
         .onAppear {
             focused = true
             inbox.loadConnectionsIfNeeded()
+            if !query.isEmpty { scheduleRemoteSearch(query) }
         }
         .onChange(of: query) { _, q in scheduleRemoteSearch(q) }
     }
@@ -110,6 +101,35 @@ struct ComposeSheet: View {
         return Array(model.inbox.snapshots.filter {
             $0.record.displayName.lowercased().contains(q) || ($0.record.slug?.lowercased().contains(q) ?? false)
         }.prefix(6))
+    }
+
+    /// Someone to message: LinkedIn hits first (LinkedIn's relevance order, with
+    /// photo and degree), then local connections not already covered.
+    private struct Person: Identifiable {
+        let id: String
+        let name: String
+        let subtitle: String
+        let slug: String?
+        let avatarURL: URL?
+        let badge: String?
+    }
+
+    private var mergedPeople: [Person] {
+        let convSlugs = Set(matchingConversations.compactMap { $0.record.slug })
+        var seen = Set<String>()
+        var out: [Person] = []
+        for hit in remote {
+            guard hit.convId == nil, !(hit.slug.map { convSlugs.contains($0) } ?? false) else { continue }
+            let key = hit.profileId ?? hit.slug ?? hit.name
+            guard seen.insert(key).inserted else { continue }
+            out.append(Person(id: "li:\(key)", name: hit.name, subtitle: hit.headline ?? "", slug: hit.slug, avatarURL: hit.avatarURL, badge: hit.distanceLabel))
+        }
+        for c in matchingConnections {
+            guard seen.insert(c.flagshipId).inserted, !(c.slug.map { seen.contains($0) } ?? false) else { continue }
+            if let slug = c.slug { seen.insert(slug) }
+            out.append(Person(id: "conn:\(c.flagshipId)", name: c.name, subtitle: c.subtitle, slug: c.slug, avatarURL: nil, badge: nil))
+        }
+        return out
     }
 
     private var matchingConnections: [Connection] {
@@ -148,8 +168,7 @@ struct ComposeSheet: View {
     private func pickFirst() {
         if let slug = pastedSlug { start(DraftRecipient(slug: slug, name: slug, headline: nil, avatarURL: nil)); return }
         if let c = matchingConversations.first { model.inbox.draft = nil; model.inbox.select(c.record.convId); dismiss(); return }
-        if let c = matchingConnections.first, let slug = c.slug { start(DraftRecipient(slug: slug, name: c.name, headline: c.subtitle, avatarURL: nil)); return }
-        if let h = remote.first, let slug = h.slug { start(DraftRecipient(slug: slug, name: h.name, headline: h.headline, avatarURL: h.avatarURL)) }
+        if let p = mergedPeople.first(where: { $0.slug != nil }), let slug = p.slug { start(DraftRecipient(slug: slug, name: p.name, headline: p.subtitle, avatarURL: p.avatarURL)) }
     }
 
     private func start(_ recipient: DraftRecipient) {
@@ -212,6 +231,8 @@ struct PersonHit: Decodable, Identifiable, Hashable {
     let location: String?
     let distance: String?
     let imageUrl: String?
+    /// Local conversation id when the CLI found an existing thread.
+    let convId: String?
 
     var avatarURL: URL? { imageUrl.flatMap { URL(string: $0) } }
     var distanceLabel: String? {

@@ -152,6 +152,9 @@ struct MessageRow: View {
     @State private var hovering = false
     @State private var showingPicker = false
 
+    /// Width of the react button plus its spacing in the reactions row.
+    static let reactButtonSlot: CGFloat = 28
+
     var body: some View {
         let mine = message.isFromMe
         let hasReactions = !message.reactions.isEmpty
@@ -159,7 +162,8 @@ struct MessageRow: View {
             if mine { Spacer(minLength: 0) }
             bubble
                 .overlay(alignment: mine ? .bottomLeading : .bottomTrailing) {
-                    reactionsRow.offset(x: mine ? 6 : -6, y: 13)
+                    // The pill lands on the bubble corner; the (hover-only) smiley hangs just outside it.
+                    reactionsRow.offset(x: mine ? -Self.reactButtonSlot + 6 : Self.reactButtonSlot - 6, y: 13)
                 }
                 .overlay(RightClickCatcher { showingPicker = true })
                 .popover(isPresented: $showingPicker, arrowEdge: .bottom) {

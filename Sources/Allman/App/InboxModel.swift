@@ -173,6 +173,7 @@ final class InboxModel {
     // MARK: Selection / read state
 
     func select(_ convId: String?) {
+        if convId != nil, draft != nil { draft = nil }
         selectedConvId = convId
         composerError = nil
         guard let convId else { return }
@@ -239,11 +240,46 @@ final class InboxModel {
     /// Message being replied to (LinkedIn "reply" quoting), per conversation.
     var replyingTo: [String: Message] = [:]
 
+    // MARK: Compose
+
+    private(set) var connections: [Connection] = []
+    private var connectionsLoaded = false
+    /// A recipient with no local thread yet; shown in place of the selected conversation.
+    var draft: DraftRecipient? { didSet { recompute() } }
+
+    func loadConnectionsIfNeeded() {
+        guard !connectionsLoaded, let dir = accountDir else { return }
+        connectionsLoaded = true
+        let reader = self.reader
+        Task { @MainActor in
+            connections = await Task.detached(priority: .utility) { reader.loadConnections(accountDir: dir) }.value
+        }
+    }
+
+    func startDraft(_ recipient: DraftRecipient) {
+        // Reuse an existing thread when the slug already has one.
+        if let existing = snapshots.first(where: { $0.record.slug == recipient.slug }) {
+            draft = nil
+            select(existing.record.convId)
+            return
+        }
+        selectedConvId = nil
+        draft = recipient
+    }
+
+    /// `allman people <query> --json`: LinkedIn people search through the CLI.
+    func searchPeople(_ query: String) async throws -> [PersonHit] {
+        guard let ctx = context else { return [] }
+        return try await AllmanRunner.runJSON(["people", query, "--limit", "8", "--json"], as: [PersonHit].self, context: ctx, timeout: 30)
+    }
+
     func send(_ text: String, to convId: String? = nil) async -> Bool {
         let target = convId ?? selectedConvId
-        guard let target, let snap = byId[target], let ctx = context else { return false }
+        guard let target, let ctx = context else { return false }
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return false }
+        if target.hasPrefix("draft:") { return await sendDraft(body, context: ctx) }
+        guard let snap = byId[target] else { return false }
         isSending = true
         composerError = nil
         defer { isSending = false }
@@ -270,6 +306,47 @@ final class InboxModel {
             composerError = error.localizedDescription
             return false
         }
+    }
+
+    /// First message to someone without a local thread. The CLI resolves the
+    /// profile, finds or creates the LinkedIn thread, and writes the record.
+    private func sendDraft(_ body: String, context ctx: AllmanRunner.Context) async -> Bool {
+        guard let recipient = draft else { return false }
+        isSending = true
+        composerError = nil
+        defer { isSending = false }
+        do {
+            let result = try await AllmanRunner.runJSON(["send", recipient.slug, body, "--json"], as: SendResult.self, context: ctx, timeout: 90)
+            let convUrn = result.conversationUrn ?? ""
+            let bare = Self.bareConversationId(convUrn)
+            await reloadAll()
+            draft = nil
+            if let bare, byId[bare] != nil {
+                select(bare)
+            } else if let found = snapshots.first(where: { $0.record.slug == recipient.slug }) {
+                select(found.record.convId)
+            }
+            toast = "Sent to \(recipient.name)"
+            return true
+        } catch let err as AllmanError {
+            if err.stderr.contains("not found on LinkedIn") {
+                composerError = "LinkedIn couldn't find a profile at linkedin.com/in/\(recipient.slug)."
+            } else {
+                composerError = err.friendlyMessage
+            }
+            return false
+        } catch {
+            composerError = error.localizedDescription
+            return false
+        }
+    }
+
+    /// `urn:li:messagingThread:2-abc` / `urn:li:msg_conversation:(…,2-abc)` → `2-abc`.
+    static func bareConversationId(_ urn: String) -> String? {
+        guard !urn.isEmpty else { return nil }
+        if let comma = urn.lastIndex(of: ",") { return String(urn[urn.index(after: comma)...]).replacingOccurrences(of: ")", with: "") }
+        if let colon = urn.lastIndex(of: ":") { return String(urn[urn.index(after: colon)...]) }
+        return urn
     }
 
     func react(_ message: Message, in convId: String, emoji: String) async {

@@ -3,6 +3,7 @@ import SwiftUI
 
 struct InboxWindow: View {
     @Environment(AppModel.self) private var model
+    @State private var composing = false
 
     var body: some View {
         @Bindable var inbox = model.inbox
@@ -10,7 +11,10 @@ struct InboxWindow: View {
             ConversationListView()
                 .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 400)
         } detail: {
-            if let snap = inbox.selected {
+            if let draft = inbox.draft {
+                DraftThreadView(recipient: draft)
+                    .id(draft.convId)
+            } else if let snap = inbox.selected {
                 ThreadView(snapshot: snap)
                     .id(snap.record.convId)
             } else if inbox.isLoading {
@@ -37,6 +41,8 @@ struct InboxWindow: View {
                     .help("Sync the last day from LinkedIn (⌘R)")
             }
         }
+        .sheet(isPresented: $composing) { ComposeSheet().environment(model) }
+        .onReceive(NotificationCenter.default.publisher(for: .allmanCompose)) { _ in composing = true }
         .frame(minWidth: 820, minHeight: 520)
         .background(WindowAccessor { window in
             window.identifier = NSUserInterfaceItemIdentifier("inbox")
@@ -58,6 +64,10 @@ struct InboxWindow: View {
         }
         .animation(.default, value: inbox.toast)
     }
+}
+
+extension Notification.Name {
+    static let allmanCompose = Notification.Name("sh.allman.mac.compose")
 }
 
 /// Grabs the hosting NSWindow so we can tag it and tweak it.

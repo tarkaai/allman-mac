@@ -39,6 +39,13 @@ struct ConversationListView: View {
         .searchable(text: $inbox.searchText, placement: .sidebar, prompt: "Search")
         .toolbar {
             ToolbarItem(placement: .automatic) {
+                Button { NotificationCenter.default.post(name: .allmanCompose, object: nil) } label: {
+                    Label("New Message", systemImage: "square.and.pencil")
+                }
+                .help("New message (⌘N)")
+                .keyboardShortcut("n", modifiers: .command)
+            }
+            ToolbarItem(placement: .automatic) {
                 Menu {
                     Picker("Filter", selection: $inbox.filter) {
                         ForEach(InboxModel.Filter.allCases) { f in

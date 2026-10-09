@@ -78,6 +78,7 @@ struct ThreadView: View {
                 AvatarView(url: snapshot.record.avatarURL, name: snapshot.record.displayName, size: 26)
                     .padding(.trailing, 2)
             }
+            .sharedBackgroundVisibility(.hidden)
             ToolbarItemGroup(placement: .primaryAction) {
                 if snapshot.record.syncState?.fullyBackfilled != true {
                     Button { inbox.backfill(convId) } label: { Label("Load full history", systemImage: "clock.arrow.circlepath") }
@@ -163,7 +164,9 @@ struct MessageRow: View {
             bubble
                 .overlay(alignment: mine ? .bottomLeading : .bottomTrailing) {
                     // The pill lands on the bubble corner; the (hover-only) smiley hangs just outside it.
-                    reactionsRow.offset(x: mine ? -Self.reactButtonSlot + 6 : Self.reactButtonSlot - 6, y: 13)
+                    reactionsRow
+                        .fixedSize() // never squeeze to a narrow bubble's width
+                        .offset(x: mine ? -Self.reactButtonSlot + 6 : Self.reactButtonSlot - 6, y: 13)
                 }
                 .overlay(RightClickCatcher { showingPicker = true })
                 .popover(isPresented: $showingPicker, arrowEdge: .bottom) {
@@ -192,7 +195,7 @@ struct MessageRow: View {
                 .offset(x: ThreadView.timeGutter - reveal)
                 .allowsHitTesting(false)
         }
-        .padding(.bottom, (hasReactions || hovering ? 16 : 0) + (showsTail ? 6 : 0))
+        .padding(.bottom, (hasReactions ? 16 : 0) + (showsTail ? 6 : 0))
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .accessibilityLabel("\(mine ? "You" : contactName), \(Fmt.clockTime(message.date)): \(message.previewText)")

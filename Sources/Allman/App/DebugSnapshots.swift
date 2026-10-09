@@ -24,7 +24,9 @@ enum DebugSnapshots {
                 let msgs = reader.readMessages(accountDir: dir, convId: snap.record.convId)
                 return msgs.contains { !$0.reactions.isEmpty } && msgs.contains { !$0.isFromMe } && msgs.count >= 4
             }
-            let target = rich ?? model.inbox.unread.first ?? model.inbox.snapshots.first
+            let wanted = ProcessInfo.processInfo.environment["ALLMAN_SNAPSHOT_CONV"]?.lowercased()
+            let named = wanted.flatMap { w in model.inbox.snapshots.first { $0.record.displayName.lowercased().contains(w) } }
+            let target = named ?? rich ?? model.inbox.unread.first ?? model.inbox.snapshots.first
             model.openInbox(convId: target?.record.convId)
             try? await Task.sleep(for: .seconds(4))
             if let w = NSApp.windows.first(where: AppDelegate.isInbox) {

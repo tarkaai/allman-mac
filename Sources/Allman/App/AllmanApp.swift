@@ -30,6 +30,9 @@ struct AllmanApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandMenu("Inbox") {
+                Button("New Message…") { model.openInbox(convId: nil); NotificationCenter.default.post(name: .allmanCompose, object: nil) }
+                    .keyboardShortcut("n", modifiers: .command)
+                Divider()
                 Button("Sync Now") { model.engine.syncNow(from: "1d") }
                     .keyboardShortcut("r", modifiers: .command)
                 Button("Full Re-sync (7 days)") { model.engine.syncNow(from: "7d", resync: true) }

@@ -56,10 +56,14 @@ struct ThreadView: View {
                     .padding(.horizontal, 16).padding(.vertical, 10)
                 }
                 .scrollEdgeEffectStyle(.soft, for: .top)
+                .defaultScrollAnchor(.bottom) // open at the newest message, no scroll-down on load
                 .background(TimeRevealGesture(reveal: $reveal, maxReveal: Self.timeGutter))
-                .onAppear { proxy.scrollTo("bottom", anchor: .bottom) }
-                .onChange(of: messages.count) { _, _ in
-                    withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("bottom", anchor: .bottom) }
+                .onChange(of: messages.count) { old, new in
+                    if old == 0 {
+                        proxy.scrollTo("bottom", anchor: .bottom) // first load: jump, don't animate
+                    } else if new > old {
+                        withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("bottom", anchor: .bottom) }
+                    }
                 }
                 .overlay {
                     if messages.isEmpty && inbox.loadingThread.contains(convId) { ProgressView() }

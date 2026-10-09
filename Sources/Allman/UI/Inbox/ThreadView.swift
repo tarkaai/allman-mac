@@ -97,14 +97,15 @@ struct ThreadView: View {
         }
     }
 
-    /// iMessage grouping: a centered stamp whenever more than an hour passes,
-    /// and a tail only on the last bubble of a run from the same side.
+    /// One day divider per calendar day, and a tail only on the last bubble
+    /// of a run from the same side.
     private func rows(for messages: [Message]) -> [Row] {
         var out: [Row] = []
         var prev: Message?
+        let cal = Calendar.current
         for (i, m) in messages.enumerated() {
             if let p = prev {
-                if m.timestamp - p.timestamp > 60 * 60 * 1000 { out.append(.stamp(m.date)) }
+                if !cal.isDate(m.date, inSameDayAs: p.date) { out.append(.stamp(m.date)) }
             } else {
                 out.append(.stamp(m.date))
             }
@@ -120,14 +121,10 @@ struct ThreadView: View {
 struct TimeStamp: View {
     let date: Date
     var body: some View {
-        let s = Fmt.threadStamp(date)
-        HStack(spacing: 4) {
-            Text(s.day).fontWeight(.semibold)
-            Text(s.time)
-        }
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .frame(maxWidth: .infinity)
+        Text(Fmt.threadStamp(date).day)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity)
     }
 }
 

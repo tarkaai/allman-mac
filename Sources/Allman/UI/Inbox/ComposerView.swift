@@ -17,6 +17,22 @@ struct ComposerView: View {
     var body: some View {
         let inbox = model.inbox
         VStack(alignment: .leading, spacing: 6) {
+            if let reply = inbox.replyingTo[convId] {
+                HStack(spacing: 8) {
+                    RoundedRectangle(cornerRadius: 1.5).fill(Color(nsColor: .systemBlue)).frame(width: 3, height: 30)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Replying to \(reply.isFromMe ? "yourself" : firstName)").font(.caption.weight(.semibold))
+                        Text(reply.previewText.replacingOccurrences(of: "\n", with: " ")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    Spacer()
+                    Button { inbox.replyingTo[convId] = nil } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                        .buttonStyle(.plain)
+                        .help("Cancel reply")
+                }
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .onAppear { focused = true }
+            }
             if let err = inbox.composerError {
                 Label(err, systemImage: "exclamationmark.triangle.fill")
                     .font(.callout).foregroundStyle(.orange)

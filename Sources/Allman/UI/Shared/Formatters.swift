@@ -30,8 +30,8 @@ enum Fmt {
 
     static func dayLabel(_ date: Date, now: Date = Date()) -> String {
         let cal = Calendar.current
-        if cal.isDateInToday(date) { return "Today" }
-        if cal.isDateInYesterday(date) { return "Yesterday" }
+        if cal.isDate(date, inSameDayAs: now) { return "Today" }
+        if isYesterday(date, now: now) { return "Yesterday" }
         let f = DateFormatter()
         if let week = cal.date(byAdding: .day, value: -6, to: cal.startOfDay(for: now)), date >= week {
             f.dateFormat = "EEEE"
@@ -48,7 +48,7 @@ enum Fmt {
     static func listTime(_ date: Date, now: Date = Date()) -> String {
         let cal = Calendar.current
         if cal.isDate(date, inSameDayAs: now) { return clockTime(date) }
-        if cal.isDateInYesterday(date) { return "Yesterday" }
+        if isYesterday(date, now: now) { return "Yesterday" }
         if let week = cal.date(byAdding: .day, value: -6, to: cal.startOfDay(for: now)), date >= week {
             let f = DateFormatter(); f.dateFormat = "EEEE"; return f.string(from: date)
         }
@@ -60,7 +60,7 @@ enum Fmt {
         let cal = Calendar.current
         let time = clockTime(date)
         if cal.isDate(date, inSameDayAs: now) { return ("Today", time) }
-        if cal.isDateInYesterday(date) { return ("Yesterday", time) }
+        if isYesterday(date, now: now) { return ("Yesterday", time) }
         let f = DateFormatter()
         if let week = cal.date(byAdding: .day, value: -6, to: cal.startOfDay(for: now)), date >= week {
             f.dateFormat = "EEEE"
@@ -70,6 +70,12 @@ enum Fmt {
             f.dateFormat = "MMM d, yyyy"
         }
         return (f.string(from: date), time)
+    }
+
+    private static func isYesterday(_ date: Date, now: Date) -> Bool {
+        let cal = Calendar.current
+        guard let y = cal.date(byAdding: .day, value: -1, to: now) else { return false }
+        return cal.isDate(date, inSameDayAs: y)
     }
 
     static let clock: DateFormatter = {

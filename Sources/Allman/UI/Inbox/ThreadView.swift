@@ -25,6 +25,8 @@ struct ThreadView: View {
         let messages = inbox.messages[convId] ?? []
         let rows = rows(for: messages)
         VStack(spacing: 0) {
+            GeometryReader { geo in
+            let maxBubble = max(260, (geo.size.width - 32) * 0.6)
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 2) {
@@ -37,9 +39,15 @@ struct ThreadView: View {
                             case .stamp(let date):
                                 TimeStamp(date: date).padding(.vertical, 10)
                             case .message(let msg, let tail):
-                                MessageRow(message: msg, contactName: snapshot.record.displayName, showsTail: tail, reveal: model.debugShowTimes ? Self.timeGutter : reveal) { emoji in
-                                    Task { await inbox.react(msg, in: convId, emoji: emoji) }
-                                }
+                                MessageRow(
+                                    message: msg,
+                                    contactName: snapshot.record.displayName,
+                                    showsTail: tail,
+                                    reveal: model.debugShowTimes ? Self.timeGutter : reveal,
+                                    maxWidth: maxBubble,
+                                    onReact: { emoji in Task { await inbox.react(msg, in: convId, emoji: emoji) } },
+                                    onReply: { inbox.replyingTo[convId] = msg }
+                                )
                                 .id(msg.id)
                             }
                         }
@@ -59,6 +67,7 @@ struct ThreadView: View {
                         ContentUnavailableView("No messages stored yet", systemImage: "text.bubble", description: Text("Say hello below, or load the history from LinkedIn."))
                     }
                 }
+            }
             }
             ComposerView(convId: convId, firstName: snapshot.record.firstName ?? snapshot.record.displayName)
         }
@@ -136,34 +145,50 @@ struct MessageRow: View {
     let contactName: String
     let showsTail: Bool
     let reveal: CGFloat
+    let maxWidth: CGFloat
     let onReact: (String) -> Void
+    let onReply: () -> Void
 
-    static let quickReactions = ["👍", "❤️", "😂", "🎉", "👏", "🙏", "💯", "🔥"]
     @State private var hovering = false
     @State private var showingPicker = false
 
     var body: some View {
         let mine = message.isFromMe
         let hasReactions = !message.reactions.isEmpty
-        HStack(spacing: 0) {
-            HStack(alignment: .bottom, spacing: 6) {
-                if mine { Spacer(minLength: 60); reactButton }
-                bubble
-                    .overlay(alignment: mine ? .bottomLeading : .bottomTrailing) {
-                        if hasReactions { reactionsPill.offset(x: mine ? 6 : -6, y: 12) }
-                    }
-                if !mine { reactButton; Spacer(minLength: 60) }
-            }
-            .frame(maxWidth: .infinity)
+        HStack(alignment: .bottom, spacing: 0) {
+            if mine { Spacer(minLength: 0) }
+            bubble
+                .overlay(alignment: mine ? .bottomLeading : .bottomTrailing) {
+                    reactionsRow.offset(x: mine ? 6 : -6, y: 13)
+                }
+                .overlay(RightClickCatcher { showingPicker = true })
+                .popover(isPresented: $showingPicker, arrowEdge: .bottom) {
+                    ReactionPicker(
+                        message: message,
+                        onReact: { showingPicker = false; onReact($0) },
+                        onReply: { showingPicker = false; onReply() },
+                        onCopy: {
+                            showingPicker = false
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(message.body, forType: .string)
+                        }
+                    )
+                }
+                .frame(maxWidth: maxWidth, alignment: mine ? .trailing : .leading)
+                // Only your own bubbles slide; the other side stays put (iMessage).
+                .offset(x: mine ? -reveal : 0)
+            if !mine { Spacer(minLength: 0) }
+        }
+        .overlay(alignment: .bottomTrailing) {
             // Parked past the trailing edge; the swipe gesture slides it into view.
             Text(Fmt.clockTime(message.date))
                 .font(.caption2).foregroundStyle(.secondary).monospacedDigit()
                 .frame(width: ThreadView.timeGutter, alignment: .center)
                 .padding(.bottom, 6)
+                .offset(x: ThreadView.timeGutter - reveal)
+                .allowsHitTesting(false)
         }
-        .padding(.trailing, -ThreadView.timeGutter)
-        .offset(x: -reveal)
-        .padding(.bottom, (hasReactions ? 14 : 0) + (showsTail ? 6 : 0))
+        .padding(.bottom, (hasReactions || hovering ? 16 : 0) + (showsTail ? 6 : 0))
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .accessibilityLabel("\(mine ? "You" : contactName), \(Fmt.clockTime(message.date)): \(message.previewText)")
@@ -171,7 +196,11 @@ struct MessageRow: View {
 
     private var bubble: some View {
         let mine = message.isFromMe
+        let replied = message.attachments.first { $0.type == "replied" }
         return VStack(alignment: .leading, spacing: 6) {
+            if let replied {
+                QuoteBlock(attachment: replied, onBlue: mine)
+            }
             if let subject = message.subject, !subject.isEmpty {
                 Text(subject).font(.callout.weight(.semibold))
             }
@@ -184,7 +213,7 @@ struct MessageRow: View {
             ForEach(Array(message.attachments.enumerated()), id: \.offset) { _, a in
                 if a.type == "link_preview" || a.type == "post_share" {
                     LinkPreviewCard(attachment: a, onBlue: mine)
-                } else {
+                } else if a.type != "replied" {
                     AttachmentChip(attachment: a, onBlue: mine)
                 }
             }
@@ -192,19 +221,19 @@ struct MessageRow: View {
         .padding(.horizontal, 12).padding(.vertical, 7)
         .foregroundStyle(mine ? .white : .primary)
         .background(mine ? BubbleStyle.outgoing : BubbleStyle.incoming, in: RoundedRectangle(cornerRadius: BubbleStyle.radius, style: .continuous))
-        .frame(maxWidth: 520, alignment: mine ? .trailing : .leading)
-        .contextMenu {
-            ForEach(Self.quickReactions, id: \.self) { e in Button(e) { onReact(e) } }
-            Divider()
-            Button("Copy Text") {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(message.body, forType: .string)
-            }
-            .disabled(message.body.isEmpty)
+    }
+
+    /// Existing reactions (LinkedIn-style pill over the bubble edge) with the
+    /// react button right beside them on hover.
+    private var reactionsRow: some View {
+        let mine = message.isFromMe
+        return HStack(spacing: 4) {
+            if mine { reactButton }
+            if !message.reactions.isEmpty { reactionsPill }
+            if !mine { reactButton }
         }
     }
 
-    /// LinkedIn-style: reactions sit half over the bubble's bottom edge.
     private var reactionsPill: some View {
         HStack(spacing: 2) {
             ForEach(message.reactions, id: \.emoji) { r in
@@ -230,25 +259,36 @@ struct MessageRow: View {
     private var reactButton: some View {
         Button { showingPicker = true } label: {
             Image(systemName: "face.smiling")
-                .font(.system(size: 15))
+                .font(.system(size: 13))
                 .foregroundStyle(.secondary)
                 .frame(width: 24, height: 24)
+                .background(.background, in: Circle())
+                .overlay(Circle().stroke(Color(nsColor: .separatorColor)))
+                .shadow(color: .black.opacity(0.08), radius: 2, y: 1)
         }
         .buttonStyle(.plain)
         .opacity(hovering || showingPicker ? 1 : 0)
         .animation(.easeInOut(duration: 0.12), value: hovering)
         .help("React")
-        .popover(isPresented: $showingPicker, arrowEdge: .top) {
-            HStack(spacing: 6) {
-                ForEach(Self.quickReactions, id: \.self) { e in
-                    Button { showingPicker = false; onReact(e) } label: {
-                        Text(e).font(.system(size: 22)).frame(width: 34, height: 34)
-                    }
-                    .buttonStyle(.plain)
-                }
+    }
+}
+
+/// The quoted original on a LinkedIn "reply" message.
+struct QuoteBlock: View {
+    let attachment: Attachment
+    let onBlue: Bool
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            RoundedRectangle(cornerRadius: 1.5).fill(onBlue ? Color.white.opacity(0.7) : Color(nsColor: .systemBlue)).frame(width: 3)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(attachment.authorName ?? "Replying to").font(.caption.weight(.semibold)).opacity(0.9)
+                Text(attachment.originalText ?? "").font(.callout).lineLimit(3).opacity(0.85)
             }
-            .padding(8)
         }
+        .padding(.horizontal, 8).padding(.vertical, 6)
+        .background(onBlue ? Color.white.opacity(0.15) : Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .frame(maxWidth: 360, alignment: .leading)
     }
 }
 

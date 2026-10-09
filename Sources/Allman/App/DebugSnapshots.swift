@@ -15,7 +15,16 @@ enum DebugSnapshots {
         Task { @MainActor in
             let model = AppModel.shared
             try? await Task.sleep(for: .seconds(8)) // let the store load and the first sync events arrive
-            let target = model.inbox.unread.first ?? model.inbox.snapshots.first
+            // Prefer a recent thread that has reactions and both sides talking, so the
+            // capture exercises pills, quotes and incoming bubbles.
+            let reader = model.reader
+            let candidates = model.inbox.snapshots.prefix(80)
+            let rich = candidates.first { snap in
+                guard let dir = model.account?.dir else { return false }
+                let msgs = reader.readMessages(accountDir: dir, convId: snap.record.convId)
+                return msgs.contains { !$0.reactions.isEmpty } && msgs.contains { !$0.isFromMe } && msgs.count >= 4
+            }
+            let target = rich ?? model.inbox.unread.first ?? model.inbox.snapshots.first
             model.openInbox(convId: target?.record.convId)
             try? await Task.sleep(for: .seconds(4))
             if let w = NSApp.windows.first(where: AppDelegate.isInbox) {

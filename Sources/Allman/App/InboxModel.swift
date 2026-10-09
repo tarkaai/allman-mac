@@ -179,6 +179,20 @@ final class InboxModel {
         Task { await loadMessages(convId: convId) }
         markSeen(convId)
         backfillIfNeeded(convId)
+        refreshRecent(convId)
+    }
+
+    private var refreshedAt: [String: Date] = [:]
+
+    /// `allman sync <conv> --limit 20` re-upserts the newest page, which is how
+    /// reactions added or removed on linkedin.com reach the store. Throttled.
+    func refreshRecent(_ convId: String, force: Bool = false) {
+        guard let ctx = context, byId[convId] != nil else { return }
+        if !force, let t = refreshedAt[convId], Date().timeIntervalSince(t) < 120 { return }
+        refreshedAt[convId] = Date()
+        Task { @MainActor in
+            _ = try? await AllmanRunner.runWithRetry(["sync", convId, "--json", "--limit", "20"], context: ctx, timeout: 120, attempts: 2)
+        }
     }
 
     func markSeen(_ convId: String) {
@@ -211,7 +225,7 @@ final class InboxModel {
         Task { @MainActor in
             defer { markReadInFlight.remove(convId) }
             do {
-                _ = try await AllmanRunner.run(["read", snap.record.sendTarget, "--json"], context: ctx, timeout: 30)
+                _ = try await AllmanRunner.runWithRetry(["read", snap.record.sendTarget, "--json"], context: ctx, timeout: 30)
             } catch let err as AllmanError where err.stderr.contains("unknown command") {
                 toast = "Update the allman CLI to sync read state to LinkedIn."
             } catch {
@@ -222,6 +236,9 @@ final class InboxModel {
 
     // MARK: Writes (through the CLI)
 
+    /// Message being replied to (LinkedIn "reply" quoting), per conversation.
+    var replyingTo: [String: Message] = [:]
+
     func send(_ text: String, to convId: String? = nil) async -> Bool {
         let target = convId ?? selectedConvId
         guard let target, let snap = byId[target], let ctx = context else { return false }
@@ -231,7 +248,10 @@ final class InboxModel {
         composerError = nil
         defer { isSending = false }
         do {
-            _ = try await AllmanRunner.runJSON(["send", snap.record.sendTarget, body, "--json"], as: SendResult.self, context: ctx, timeout: 60)
+            var args = ["send", snap.record.sendTarget, body, "--json"]
+            if let reply = replyingTo[target] { args += ["--reply-to", reply.urn] }
+            _ = try await AllmanRunner.runJSON(args, as: SendResult.self, context: ctx, timeout: 60)
+            replyingTo[target] = nil
             await reload(convIds: [target])
             markSeen(target)
             return true
@@ -240,8 +260,10 @@ final class InboxModel {
             if err.stderr.contains("received before send") {
                 composerError = "New messages arrived in this thread — read them, then send again."
                 await reload(convIds: [target])
+            } else if err.stderr.contains("unknown option") && err.stderr.contains("reply-to") {
+                composerError = "Replying to a specific message needs a newer allman CLI."
             } else {
-                composerError = err.errorDescription
+                composerError = err.friendlyMessage
             }
             return false
         } catch {
@@ -258,8 +280,10 @@ final class InboxModel {
         do {
             _ = try await AllmanRunner.runJSON(args, as: ReactResult.self, context: ctx, timeout: 30)
             await loadMessages(convId: convId, force: true)
+        } catch let err as AllmanError {
+            toast = err.isGitLock ? "Couldn't save the reaction — the store was busy. Try again." : "Reaction failed: \(err.friendlyMessage)"
         } catch {
-            toast = (error as? AllmanError)?.errorDescription ?? error.localizedDescription
+            toast = "Reaction failed: \(error.localizedDescription)"
         }
     }
 
@@ -272,7 +296,7 @@ final class InboxModel {
         Task { @MainActor in
             defer { backfilling.remove(convId) }
             do {
-                _ = try await AllmanRunner.run(["sync", convId, "--json"], context: ctx, timeout: 600)
+                _ = try await AllmanRunner.runWithRetry(["sync", convId, "--json"], context: ctx, timeout: 600, attempts: 2)
             } catch {
                 // Non-fatal: the thread still shows whatever is on disk.
             }

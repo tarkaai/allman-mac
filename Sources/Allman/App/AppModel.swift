@@ -144,6 +144,12 @@ final class AppModel {
     // MARK: Notifications
 
     private func handleListen(_ ev: ListenEvent) {
+        if ev.event == "reaction" {
+            // The CLI updates the stored message when it can resolve the thread; the
+            // open thread is also re-pulled so a reaction removed on linkedin.com disappears here.
+            if let sel = inbox.selectedConvId { inbox.refreshRecent(sel, force: true) }
+            return
+        }
         guard ev.event == "message.received", ev.message?.isFromMe != true else { return }
         guard let convId = ev.conversation?.convId else { return }
         let urn = ev.message?.urn ?? "\(convId):\(Int(ev.timestamp ?? 0))"

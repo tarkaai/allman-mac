@@ -12,9 +12,35 @@ struct AllmanError: LocalizedError {
     let command: String
     let exitCode: Int32
     let stderr: String
-    var errorDescription: String? {
-        let detail = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
-        return detail.isEmpty ? "allman \(command) exited \(exitCode)" : detail
+    var errorDescription: String? { friendlyMessage }
+
+    /// One short, human line — never a git/stack dump.
+    var friendlyMessage: String {
+        let lines = stderr.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        if isGitLock { return "The store was busy (another allman command was writing). Please try again." }
+        if looksLikeAuthFailure { return "LinkedIn session expired. Sign in again from the menu bar." }
+        if let rate = lines.first(where: { $0.lowercased().contains("rate limit") || $0.contains("429") }) { return String(rate.prefix(140)) }
+        // Prefer the CLI's own "✗ …" error line, else the last non-noise line.
+        let candidate = lines.last(where: { $0.hasPrefix("✗") })
+            ?? lines.last(where: { !$0.lowercased().hasPrefix("fatal:") && !$0.hasPrefix("at ") && !$0.contains("node_modules") })
+            ?? lines.last
+        guard var msg = candidate else { return "allman \(command) exited \(exitCode)" }
+        if msg.hasPrefix("✗") { msg = msg.dropFirst().trimmingCharacters(in: .whitespaces) }
+        if msg.lowercased().hasPrefix("error:") { msg = msg.dropFirst(6).trimmingCharacters(in: .whitespaces) }
+        return msg.count > 160 ? String(msg.prefix(157)) + "…" : msg
+    }
+
+    /// Two allman processes committing at once (e.g. a reaction while `listen` writes).
+    var isGitLock: Bool {
+        let s = stderr.lowercased()
+        return s.contains("index.lock") || s.contains("unable to create") && s.contains(".lock") || s.contains("another git process")
+    }
+
+    /// Worth an automatic retry: store contention or a flaky network hop.
+    var isTransient: Bool {
+        if isGitLock { return true }
+        let s = stderr.lowercased()
+        return s.contains("econnreset") || s.contains("etimedout") || s.contains("socket hang up") || s.contains("http 429") || s.contains("http 5")
     }
     /// The CLI's wording when cookies are gone or stale.
     var looksLikeAuthFailure: Bool {
@@ -178,8 +204,23 @@ enum AllmanRunner {
         }
     }
 
+    /// `run` with automatic retries for transient failures (git lock, network blips).
+    static func runWithRetry(_ arguments: [String], context: Context, timeout: TimeInterval = 120, attempts: Int = 4) async throws -> String {
+        var delay: UInt64 = 400
+        for attempt in 1...attempts {
+            do {
+                return try await run(arguments, context: context, timeout: timeout)
+            } catch let err as AllmanError where err.isTransient && attempt < attempts {
+                cliLog.notice("allman \(arguments.first ?? "", privacy: .public) transient failure (attempt \(attempt)): retrying in \(delay)ms")
+                try? await Task.sleep(for: .milliseconds(delay))
+                delay = min(delay * 2, 3000)
+            }
+        }
+        return try await run(arguments, context: context, timeout: timeout)
+    }
+
     static func runJSON<T: Decodable>(_ arguments: [String], as type: T.Type, context: Context, timeout: TimeInterval = 120) async throws -> T {
-        let raw = try await run(arguments, context: context, timeout: timeout)
+        let raw = try await runWithRetry(arguments, context: context, timeout: timeout)
         // Commands print exactly one JSON document in --json mode; take the last line that parses.
         for line in raw.split(separator: "\n").reversed() {
             if let data = line.data(using: .utf8), let v = try? JSONDecoder().decode(T.self, from: data) { return v }

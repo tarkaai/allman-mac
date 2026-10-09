@@ -159,11 +159,13 @@ struct MessageRow: View {
         HStack(alignment: .bottom, spacing: 0) {
             if mine { Spacer(minLength: 0) }
             bubble
-                .overlay(alignment: mine ? .bottomLeading : .bottomTrailing) {
-                    // The pill lands on the bubble corner; the (hover-only) smiley hangs just outside it.
+                .overlay(alignment: mine ? .topLeading : .topTrailing) {
+                    // Apple Messages tapback placement: on the top outer corner, pushed
+                    // outward so it never sits over the text. The hover-only smiley
+                    // hangs further outside.
                     reactionsRow
                         .fixedSize() // never squeeze to a narrow bubble's width
-                        .offset(x: mine ? -Self.reactButtonSlot + 6 : Self.reactButtonSlot - 6, y: 13)
+                        .offset(x: mine ? -(Self.reactButtonSlot + 14) : Self.reactButtonSlot + 14, y: -12)
                 }
                 .overlay(RightClickCatcher { showingPicker = true })
                 .popover(isPresented: $showingPicker, arrowEdge: .bottom) {
@@ -192,7 +194,8 @@ struct MessageRow: View {
                 .offset(x: ThreadView.timeGutter - reveal)
                 .allowsHitTesting(false)
         }
-        .padding(.bottom, (hasReactions ? 16 : 0) + (showsTail ? 6 : 0))
+        .padding(.top, hasReactions ? 12 : 0)
+        .padding(.bottom, showsTail ? 6 : 0)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .accessibilityLabel("\(mine ? "You" : contactName), \(Fmt.clockTime(message.date)): \(message.previewText)")

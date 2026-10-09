@@ -47,19 +47,24 @@ struct ComposerView: View {
                     .onSubmit(send)
                     .padding(.leading, 12).padding(.vertical, 7)
                 Button(action: send) {
-                    if inbox.isSending {
-                        ProgressView().controlSize(.small).frame(width: 26, height: 26)
-                    } else {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 24))
-                            .foregroundStyle(canSend ? Color(nsColor: .systemBlue) : Color.secondary.opacity(0.5))
+                    Group {
+                        if inbox.isSending {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.system(size: 24))
+                                .foregroundStyle(canSend ? Color(nsColor: .systemBlue) : Color.secondary.opacity(0.5))
+                        }
                     }
+                    // Same height as a one-line field, so the arrow is centered on the
+                    // composing line and rides the last line as the field grows.
+                    .frame(width: 30, height: 36)
                 }
                 .buttonStyle(.plain)
                 .disabled(!canSend)
                 .keyboardShortcut(.return, modifiers: .command)
                 .help("Send (Return)")
-                .padding(.trailing, 5).padding(.bottom, 4)
+                .padding(.trailing, 4)
             }
             .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 19, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 19, style: .continuous).stroke(Color(nsColor: .separatorColor)))

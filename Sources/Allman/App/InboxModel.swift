@@ -184,8 +184,10 @@ final class InboxModel {
         let (msgs, files) = await Task.detached(priority: .userInitiated) {
             (reader.readMessages(accountDir: dir, convId: convId), reader.mediaFiles(accountDir: dir, convId: convId))
         }.value
-        messages[convId] = msgs
-        media[convId] = files
+        // Only publish when something changed: a re-sync that rewrote identical
+        // content must not churn the thread view (it can flash blank mid-layout).
+        if messages[convId] != msgs { messages[convId] = msgs }
+        if media[convId] != files { media[convId] = files }
         loadingThread.remove(convId)
         ensureMedia(convId, messages: msgs, files: files)
     }

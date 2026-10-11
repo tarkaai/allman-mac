@@ -144,6 +144,7 @@ final class InboxModel {
     var showLabelPicker = false
     var showSnoozePicker = false
     var showNoteEditor = false
+    var showSnippetPicker = false
     var renamingLabel: InboxLabel?
 
     func unreadCount(label id: String) -> Int {

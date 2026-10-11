@@ -51,6 +51,9 @@ struct AllmanApp: App {
                 .disabled(model.inbox.selectedConvId == nil)
                 .keyboardShortcut("p", modifiers: [.command, .shift])
                 Divider()
+                Button("Insert Snippet…") { model.inbox.requestFocus(.composer); model.inbox.showSnippetPicker = true }
+                    .disabled(model.inbox.selectedConvId == nil && model.inbox.draft == nil)
+                    .keyboardShortcut("s", modifiers: [.command, .shift])
                 Button("Labels…") { model.inbox.showLabelPicker = true }
                     .disabled(model.inbox.selectedConvId == nil)
                     .keyboardShortcut("l", modifiers: [.command, .shift])

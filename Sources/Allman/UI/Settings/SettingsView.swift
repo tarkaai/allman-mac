@@ -2,6 +2,16 @@ import AppKit
 import SwiftUI
 
 struct SettingsView: View {
+    var body: some View {
+        TabView {
+            GeneralSettingsView().tabItem { Label("General", systemImage: "gear") }
+            SnippetSettingsView().tabItem { Label("Snippets", systemImage: "text.quote") }
+        }
+        .frame(width: 560)
+    }
+}
+
+struct GeneralSettingsView: View {
     @Environment(AppModel.self) private var model
     @AppStorage(StorePaths.storeOverrideKey) private var storeOverride = ""
     @AppStorage(AllmanBinary.overrideKey) private var binaryOverride = ""
@@ -102,7 +112,6 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 520)
         .fixedSize(horizontal: false, vertical: true)
     }
 

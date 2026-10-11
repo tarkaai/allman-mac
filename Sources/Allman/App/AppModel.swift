@@ -18,6 +18,8 @@ final class AppModel {
 
     let reader: StoreReader
     let notifier = Notifier()
+    /// Saved replies, shared by every account.
+    let snippets = SnippetStore()
 
     /// One session per account directory in the store, in slug order.
     private(set) var sessions: [AccountSession] = []

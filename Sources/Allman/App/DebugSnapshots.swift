@@ -129,6 +129,22 @@ enum DebugSnapshots {
                     model.inbox.organizer = originalOrganizer
                     model.inbox.organizer.save()
                 }
+                // Snippet picker over the composer (ALLMAN_SNAPSHOT_SNIPPETS=1); temporary snippets, restored afterwards.
+                if ProcessInfo.processInfo.environment["ALLMAN_SNAPSHOT_SNIPPETS"] != nil {
+                    let originalSnippets = model.snippets.snippets
+                    model.snippets.add(name: "Follow up", body: "Hey {firstName}, following up on my note — any thoughts?")
+                    model.snippets.add(name: "Thanks for coming", body: "Thanks for coming out to AI Tinkerers, {firstName}! Great to meet someone from {company}.")
+                    model.snippets.add(name: "Intro", body: "Hi {firstName}, {me} here. I run the GTM track at AI Tinkerers Seattle and would love to have you.")
+                    model.inbox.requestFocus(.composer)
+                    try? await Task.sleep(for: .milliseconds(400))
+                    model.inbox.showSnippetPicker = true
+                    try? await Task.sleep(for: .seconds(1.5))
+                    if let pop = NSApp.windows.first(where: { String(describing: type(of: $0)).contains("Popover") && $0.isVisible }) { capture(pop, to: out.appendingPathComponent("snippets.png")) }
+                    capture(w, to: out.appendingPathComponent("snippets-window.png"))
+                    model.inbox.showSnippetPicker = false
+                    try? await Task.sleep(for: .milliseconds(400))
+                    for s in model.snippets.snippets where !originalSnippets.contains(s) { model.snippets.remove(s.id) }
+                }
                 let hadInspector = model.inspectorVisible
                 model.inspectorVisible = true
                 try? await Task.sleep(for: .seconds(1.5))

@@ -42,6 +42,24 @@ struct ComposerView: View {
                     .textSelection(.enabled)
             }
             HStack(alignment: .bottom, spacing: 6) {
+                @Bindable var inbox = inbox
+                Button { inbox.showSnippetPicker.toggle() } label: {
+                    Image(systemName: "text.quote")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 28, height: 36)
+                }
+                .buttonStyle(.plain)
+                .help("Insert a snippet (⇧⌘S, or type / in an empty field)")
+                .padding(.leading, 4)
+                .popover(isPresented: $inbox.showSnippetPicker, arrowEdge: .top) {
+                    SnippetPicker(vars: snippetVars) { rendered in
+                        inbox.showSnippetPicker = false
+                        text = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? rendered : text + rendered
+                        focused = true
+                    }
+                    .environment(model)
+                }
                 TextField("Message \(firstName)…", text: $text, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(.body)
@@ -49,7 +67,11 @@ struct ComposerView: View {
                     .focused($focused)
                     .onSubmit(send)
                     .onKeyPress(.escape) { model.inbox.requestFocus(.list); return .handled }
-                    .padding(.leading, 12)
+                    .onChange(of: text) { old, new in
+                        // "/" alone in an empty field opens the snippet picker (Slack-style).
+                        if old.isEmpty, new == "/" { text = ""; inbox.showSnippetPicker = true }
+                    }
+                    .padding(.leading, 2)
                     .padding(.vertical, 6)
                     .frame(minHeight: 36) // one line is exactly as tall as the send button
                 Button(action: send) {
@@ -74,6 +96,21 @@ struct ComposerView: View {
         .onChange(of: model.inbox.focusToken) { _, _ in
             if model.inbox.focusTarget == .composer { focused = true }
         }
+    }
+
+    /// Placeholder values for the thread (or draft recipient) this composer belongs to.
+    private var snippetVars: [String: String] {
+        let inbox = model.inbox
+        let me = model.current?.displayName
+        if let snap = inbox.byId[convId] {
+            return snap.record.snippetVars(connection: inbox.connection(for: snap.record), me: me)
+        }
+        if let d = inbox.draft, d.convId == convId {
+            let first = d.name.split(separator: " ").first.map(String.init) ?? d.name
+            let last = d.name.split(separator: " ").dropFirst().joined(separator: " ")
+            return ["firstName": first, "lastName": last, "name": d.name, "slug": d.slug, "company": inbox.connectionsBySlug[d.slug]?.company ?? "", "title": inbox.connectionsBySlug[d.slug]?.title ?? "", "me": me?.split(separator: " ").first.map(String.init) ?? ""]
+        }
+        return ["firstName": firstName, "name": firstName, "me": me?.split(separator: " ").first.map(String.init) ?? ""]
     }
 
     private func send() {

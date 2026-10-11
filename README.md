@@ -7,9 +7,12 @@ the local-first LinkedIn messenger CLI. Two jobs:
    the realtime connection is up, when the last sync ran, and a trail of what just
    synced. It restarts `allman listen` with backoff, re-syncs on wake and on
    network changes, and runs a background sync on a timer as a safety net.
-2. **A full LinkedIn inbox on top of the store.** Conversation list with search and
-   an unread filter, day-grouped threads with attachments and reactions, a composer
-   that sends through `allman send`, and native notifications with inline Reply.
+2. **A full LinkedIn inbox on top of the store.** An iMessage-style inbox: searchable
+   list with filters and Messages-style pinned favorites, blue/gray threads with
+   swipe-to-reveal times, link previews, LinkedIn-style reactions and reply quoting,
+   a compose sheet that finds people in your conversations, your connections, or on
+   LinkedIn (`allman people`), native notifications with inline Reply, and read state
+   mirrored to linkedin.com (`allman read`).
 
 Everything on disk stays the CLI's: the app reads the store directly for speed and
 shells out to the `allman` binary for every write, so rate limiting, pre-send
@@ -22,7 +25,8 @@ checks and git commits all go through the canonical path.
 
 - macOS 26 (Tahoe) or later — the UI uses Liquid Glass and the macOS 26 SwiftUI APIs.
 - Xcode 26 and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`) to build.
-- An `allman` binary to embed (`curl -fsSL https://allman.sh/install.sh | bash`), or set `ALLMAN_BIN`.
+- An `allman` binary to embed, **0.4 or newer** (it needs `read`, `people` and `send --reply-to`):
+  `curl -fsSL https://allman.sh/install.sh | bash`, or build `allman-cli` and set `ALLMAN_BIN`.
 
 ## Build & run
 
@@ -51,14 +55,17 @@ Sources/Allman/
 - **Reads** come straight from `$HOME/.allman` (or `ALLMAN_STORE`): every `RECORD.json` plus the
   newest JSONL line per conversation at launch, full threads on demand. An FSEvents watcher on
   the account directory reloads whatever changed — including writes from the CLI or TUI in a terminal.
-- **Writes** are `allman send … --json`, `allman react … --json`, `allman sync <conv> --json`
-  (history backfill on first open), and `allman login`. Every call gets `--store` and `--account`.
+- **Writes** are `allman send … --json` (with `--reply-to` for quoted replies), `allman react … --json`,
+  `allman read <target> --json` (when you open a thread, so linkedin.com matches), `allman sync <conv> --json`
+  (history backfill on first open, and a small re-pull so reactions changed elsewhere show up), and
+  `allman login`. Compose search uses `allman people <query> --json`. Every call gets `--store` and `--account`.
 - **Live** state comes from a long-running `allman listen`: `connected`/`heartbeat` drive the status
   item; `message.received` posts a notification. The engine kills and restarts the subprocess when
   the network path changes, on wake from sleep, or after four minutes without a heartbeat.
-- **Unread** is app-owned (Application Support/Allman/read-state.json): a thread is unread when its
-  newest message is inbound, you haven't opened it since, and LinkedIn flags it unread or it arrived
-  after first launch. Opening a thread marks it seen; nothing is written to the store.
+- **Unread** combines LinkedIn's state with app-owned watermarks (Application Support/Allman/read-state.json,
+  which also holds pins): LinkedIn's read state wins whenever it is at least as new as the newest message;
+  otherwise a thread is unread when its newest message is inbound and you haven't opened it here. Opening a
+  thread marks it seen locally and on LinkedIn through the CLI; nothing is written to the store by the app.
 
 ## Binary resolution
 
@@ -70,17 +77,27 @@ Settings override → `ALLMAN_BIN` → bundled `Contents/Resources/allman` → `
 | Key | Action |
 | --- | --- |
 | `⌘I` (panel) | Open the inbox |
+| `⌘N` | New message |
+| `↑` / `↓` | Move through the list (when it has focus) |
+| `⌘↓` / `⌘↑` | Next / previous conversation from anywhere |
+| `⌥⌘↓` / `⌥⌘↑` | Next / previous unread |
+| `↩` or `Space` (list) | Jump to the message field; `Esc` goes back to the list |
+| `⌘F` / `⌘L` | Focus search / the message field |
+| `⇧⌘P` | Pin or unpin the open thread |
+| `↩` | Send (`⌥↩` for a newline) |
 | `⌘R` | Sync the last day |
 | `⇧⌘R` | Full re-sync of the last 7 days |
-| `⌘↩` | Send the reply |
 | `⇧⌘U` | Toggle unread-only |
 | `⇧⌘K` | Mark all as read |
 | `⇧⌘O` | Open thread on linkedin.com |
 
 ## Development notes
 
-- `ALLMAN_SNAPSHOT_DIR=/tmp/shots open dist/Allman.app` renders the inbox window and the menu bar
-  panel to PNG and quits — useful for reviewing the UI without screen-recording permission.
+- `open dist/Allman.app --env ALLMAN_SNAPSHOT_DIR=/tmp/shots` renders the inbox window (plus the
+  swipe-reveal state and unread filter), the menu bar panel, the sign-in state and Settings to PNG and
+  quits — useful for reviewing the UI without screen-recording permission. Add `ALLMAN_SNAPSHOT_CONV=<name>`
+  to pick the thread, `ALLMAN_SNAPSHOT_COMPOSE=<query>` to capture the compose sheet, and
+  `ALLMAN_SNAPSHOT_PINS=a,b,c` to pin threads for the capture (restored afterwards).
 - Notifications need the app to run from a real `.app` bundle (they do from `dist/` or Xcode).
 - Launch at Login uses `SMAppService`; macOS may ignore it for apps outside `/Applications`.
 

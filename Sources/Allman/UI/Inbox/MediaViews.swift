@@ -81,6 +81,7 @@ struct VideoAttachment: View {
 
 /// Voice-note style player: play/pause, scrubbing progress, duration.
 struct AudioAttachment: View {
+    @Environment(AppModel.self) private var model
     let url: URL
     let durationMs: Int?
     let onBlue: Bool
@@ -90,17 +91,31 @@ struct AudioAttachment: View {
     @State private var observer: Any?
 
     var body: some View {
-        HStack(spacing: 10) {
-            Button(action: toggle) {
-                Image(systemName: playing ? "pause.circle.fill" : "play.circle.fill").font(.system(size: 26))
+        let store = model.transcripts
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 10) {
+                Button(action: toggle) {
+                    Image(systemName: playing ? "pause.circle.fill" : "play.circle.fill").font(.system(size: 26))
+                }
+                .buttonStyle(.plain)
+                ProgressView(value: progress).progressViewStyle(.linear).frame(width: 140)
+                    .tint(onBlue ? .white : .accentColor)
+                Text(durationText).font(.caption.monospacedDigit())
             }
-            .buttonStyle(.plain)
-            ProgressView(value: progress).progressViewStyle(.linear).frame(width: 140)
-                .tint(onBlue ? .white : .accentColor)
-            Text(durationText).font(.caption.monospacedDigit())
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(onBlue ? Color.white.opacity(0.15) : Color.primary.opacity(0.06), in: Capsule())
+            // On-device transcript (Speech framework), cached per file.
+            if let t = store.transcript(for: url) {
+                Text(t).font(.callout).opacity(0.9).textSelection(.enabled).frame(maxWidth: 360, alignment: .leading)
+            } else if store.inFlight.contains(TranscriptStore.key(for: url)) {
+                HStack(spacing: 6) { ProgressView().controlSize(.mini); Text("Transcribing…").font(.caption).opacity(0.8) }
+            } else if let err = store.failed[TranscriptStore.key(for: url)] {
+                Text(err).font(.caption2).opacity(0.7)
+            } else if !store.isEnabled {
+                Button("Transcribe") { store.isEnabled = true; store.transcribe(url) }.buttonStyle(.link).font(.caption)
+            }
         }
-        .padding(.horizontal, 10).padding(.vertical, 6)
-        .background(onBlue ? Color.white.opacity(0.15) : Color.primary.opacity(0.06), in: Capsule())
+        .onAppear { store.transcribe(url) }
         .onDisappear { player?.pause(); playing = false }
     }
 

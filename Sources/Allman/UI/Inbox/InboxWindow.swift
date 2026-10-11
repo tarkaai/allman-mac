@@ -6,6 +6,7 @@ struct InboxWindow: View {
     @Environment(\.openWindow) private var openWindow
     @State private var composing = false
     @State private var choosingSyncWindow = false
+    @State private var showingInsights = false
 
     var body: some View {
         @Bindable var inbox = model.inbox
@@ -43,6 +44,8 @@ struct InboxWindow: View {
                     .help("Sync the last day from LinkedIn (⌘R)")
                 Button { model.openNetwork() } label: { Label("Network", systemImage: "person.2") }
                     .help("Your connections, profile enrichment and connection requests (⌘2)")
+                Button { showingInsights = true } label: { Label("Insights", systemImage: "chart.bar.xaxis") }
+                    .help("Volume, reply rate and speed, who's waiting (⇧⌘I)")
             }
         }
         .sheet(isPresented: $composing) { ComposeSheet().environment(model) }
@@ -50,6 +53,8 @@ struct InboxWindow: View {
         .onReceive(NotificationCenter.default.publisher(for: .allmanCompose)) { _ in composing = true }
         .onReceive(NotificationCenter.default.publisher(for: .allmanSyncWindow)) { _ in choosingSyncWindow = true }
         .sheet(isPresented: $choosingSyncWindow) { SyncWindowSheet().environment(model) }
+        .onReceive(NotificationCenter.default.publisher(for: .allmanInsights)) { _ in showingInsights = true }
+        .sheet(isPresented: $showingInsights) { InsightsSheet().environment(model) }
         .frame(minWidth: 820, minHeight: 520)
         .background(WindowAccessor { window in
             window.identifier = NSUserInterfaceItemIdentifier("inbox")
@@ -82,6 +87,7 @@ struct InboxWindow: View {
 extension Notification.Name {
     static let allmanCompose = Notification.Name("sh.allman.mac.compose")
     static let allmanSyncWindow = Notification.Name("sh.allman.mac.syncWindow")
+    static let allmanInsights = Notification.Name("sh.allman.mac.insights")
 }
 
 /// Grabs the hosting NSWindow so we can tag it and tweak it.

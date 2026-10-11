@@ -183,6 +183,15 @@ enum DebugSnapshots {
                 }
             }
 
+            // Insights sheet (ALLMAN_SNAPSHOT_INSIGHTS=1).
+            if ProcessInfo.processInfo.environment["ALLMAN_SNAPSHOT_INSIGHTS"] != nil, let w = NSApp.windows.first(where: AppDelegate.isInbox) {
+                NotificationCenter.default.post(name: .allmanInsights, object: nil)
+                try? await Task.sleep(for: .seconds(6))
+                if let sheet = w.attachedSheet { capture(sheet, to: out.appendingPathComponent("insights.png")) } else { capture(w, to: out.appendingPathComponent("insights.png")) }
+                w.attachedSheet.map { w.endSheet($0) }
+                try? await Task.sleep(for: .milliseconds(500))
+            }
+
             // The Network window (ALLMAN_SNAPSHOT_NETWORK=1), connections loaded from the store copy.
             if ProcessInfo.processInfo.environment["ALLMAN_SNAPSHOT_NETWORK"] != nil {
                 model.openNetwork()

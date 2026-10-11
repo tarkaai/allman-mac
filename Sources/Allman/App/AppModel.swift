@@ -20,6 +20,8 @@ final class AppModel {
     let notifier = Notifier()
     /// Saved replies, shared by every account.
     let snippets = SnippetStore()
+    /// Voice note transcripts (on-device), shared by every account.
+    let transcripts = TranscriptStore()
 
     /// One session per account directory in the store, in slug order.
     private(set) var sessions: [AccountSession] = []
@@ -306,6 +308,35 @@ final class AppModel {
     func openSettings() {
         closePanel?()
         openSettingsWindow?()
+    }
+
+    // MARK: Export
+
+    /// Every conversation (plus labels and notes) as CSV, via a save panel.
+    func exportConversationsCSV() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "allman-conversations-\(current?.slug ?? "export").csv"
+        panel.allowedContentTypes = [.commaSeparatedText]
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let inbox = self.inbox
+        let csv = Exporter.conversationsCSV(inbox.snapshots, organizer: inbox.organizer) { inbox.connection(for: $0) }
+        do { try csv.write(to: url, atomically: true, encoding: .utf8); inbox.toast = "Exported \(inbox.snapshots.count) conversations" }
+        catch { inbox.toast = "Export failed: \(error.localizedDescription)" }
+    }
+
+    /// The open thread as Markdown.
+    func exportThreadMarkdown() {
+        guard let snap = inbox.selected, let dir = inbox.accountDir else { return }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "\(snap.record.slug ?? snap.record.convId).md"
+        panel.allowedContentTypes = [.plainText]
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let msgs = inbox.messages[snap.record.convId] ?? reader.readMessages(accountDir: dir, convId: snap.record.convId)
+        let md = Exporter.threadMarkdown(snap, messages: msgs, organizer: inbox.organizer, connection: inbox.connection(for: snap.record), me: current?.displayName ?? "Me")
+        do { try md.write(to: url, atomically: true, encoding: .utf8); inbox.toast = "Exported thread with \(snap.record.displayName)" }
+        catch { inbox.toast = "Export failed: \(error.localizedDescription)" }
     }
 
     func openNetwork() {

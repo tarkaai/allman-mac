@@ -41,6 +41,13 @@ All of this is app-owned, per account, under `~/Library/Application Support/Allm
   replies with `{firstName} {lastName} {name} {slug} {company} {title} {me}` filled in.
   Manage them in Settings → Snippets. They share allman-tui's template format and are
   seeded from `~/.config/allman-tui/templates.json` on first launch.
+- **Voice notes** are transcribed on this Mac with the Speech framework (no network) the
+  first time they're shown, and the transcript appears under the player. Toggle in
+  Settings → Behavior.
+- **Insights** (`⇧⌘I`) show sent/received volume, reply rate and median reply time,
+  threads waiting on you, messages per week and your most active contacts.
+- **Export** (File menu) writes every conversation with labels and notes as CSV for a
+  spreadsheet or CRM, or the open thread as Markdown.
 - **Contact details** (`I` or `⌥⌘I`) show pronouns, degree, role, location, about,
   experience, education and skills from the connections store once `allman enrich`
   has run; *Fetch profile details* runs `allman enrich <slug> --deep` for one person.
@@ -184,6 +191,7 @@ Settings override → `ALLMAN_BIN` → bundled `Contents/Resources/allman` → `
 | `⇧⌘Z` | Undo the last archive or snooze |
 | `⇧⌘S` | Insert a snippet |
 | `⌥⌘I` | Show or hide contact details |
+| `⇧⌘I` | Insights |
 | `↩` | Send (`⌥↩` for a newline) |
 | `⌘R` | Sync the last day |
 | `⇧⌘R` | Full re-sync of the last 7 days |
@@ -200,7 +208,7 @@ Settings override → `ALLMAN_BIN` → bundled `Contents/Resources/allman` → `
   to pick the thread, `ALLMAN_SNAPSHOT_COMPOSE=<query>` to capture the compose sheet,
   `ALLMAN_SNAPSHOT_SEARCH=<query>` for full-text search, `ALLMAN_SNAPSHOT_ORGANIZE=1` for labels,
   notes and reminders, `ALLMAN_SNAPSHOT_SNIPPETS=1` for the snippet picker, `ALLMAN_SNAPSHOT_NETWORK=1`
-  for the Network window, and
+  for the Network window, `ALLMAN_SNAPSHOT_INSIGHTS=1` for the Insights sheet, and
   `ALLMAN_SNAPSHOT_PINS=a,b,c` to pin threads for the capture (restored afterwards).
 - Notifications need the app to run from a real `.app` bundle (they do from `dist/` or Xcode).
 - Launch at Login uses `SMAppService`; macOS may ignore it for apps outside `/Applications`.

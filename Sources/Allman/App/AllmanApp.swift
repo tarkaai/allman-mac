@@ -23,11 +23,19 @@ struct AllmanApp: App {
         .handlesExternalEvents(matching: ["inbox"])
         .commands {
             CommandGroup(replacing: .newItem) {}
+            CommandGroup(replacing: .importExport) {
+                Button("Export Conversations as CSV…") { model.exportConversationsCSV() }
+                    .disabled(model.inbox.snapshots.isEmpty)
+                Button("Export Thread as Markdown…") { model.exportThreadMarkdown() }
+                    .disabled(model.inbox.selected == nil)
+            }
             CommandMenu("Inbox") {
                 Button("New Message…") { model.openInbox(convId: nil); NotificationCenter.default.post(name: .allmanCompose, object: nil) }
                     .keyboardShortcut("n", modifiers: .command)
                 Button("Network…") { model.openNetwork() }
                     .keyboardShortcut("2", modifiers: .command)
+                Button("Insights…") { model.openInbox(convId: nil); NotificationCenter.default.post(name: .allmanInsights, object: nil) }
+                    .keyboardShortcut("i", modifiers: [.command, .shift])
                 Divider()
                 Button("Sync Now") { model.engine.syncNow(from: "1d") }
                     .keyboardShortcut("r", modifiers: .command)

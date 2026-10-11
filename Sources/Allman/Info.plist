@@ -41,6 +41,8 @@
 	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026 Tarka Ventures, Inc. MIT License.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Allman transcribes LinkedIn voice notes on this Mac so you can read them.</string>
 	<key>NSSupportsAutomaticTermination</key>
 	<false/>
 	<key>NSSupportsSuddenTermination</key>

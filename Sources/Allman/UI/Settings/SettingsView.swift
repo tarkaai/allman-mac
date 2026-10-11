@@ -112,6 +112,7 @@ struct GeneralSettingsView: View {
             Section("Behavior") {
                 Toggle("Launch at login", isOn: Binding(get: { model.launchAtLogin }, set: { model.launchAtLogin = $0 }))
                 Toggle("Notify for new messages", isOn: $notificationsEnabled)
+                Toggle("Transcribe voice notes on this Mac", isOn: Binding(get: { model.transcripts.isEnabled }, set: { model.transcripts.isEnabled = $0 }))
                 Picker("Background sync every", selection: $syncInterval) {
                     Text("5 minutes").tag(5)
                     Text("15 minutes").tag(15)

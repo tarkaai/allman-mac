@@ -61,7 +61,10 @@ enum DebugSnapshots {
             try? await Task.sleep(for: .seconds(2))
             if ProcessInfo.processInfo.environment["ALLMAN_SNAPSHOT_OUTGOING"] != nil, let conv = target?.record.convId {
                 model.inbox.debugInjectOutgoing(conv)
-                try? await Task.sleep(for: .seconds(1))
+                for ms in [60, 160, 300, 900] {
+                    try? await Task.sleep(for: .milliseconds(ms))
+                    if let w = NSApp.windows.first(where: AppDelegate.isInbox) { capture(w, to: out.appendingPathComponent("outgoing-\(ms).png")) }
+                }
                 if let w = NSApp.windows.first(where: AppDelegate.isInbox) { capture(w, to: out.appendingPathComponent("outgoing.png")) }
                 model.inbox.discardOutgoing("dbg-1", in: conv); model.inbox.discardOutgoing("dbg-2", in: conv)
             }

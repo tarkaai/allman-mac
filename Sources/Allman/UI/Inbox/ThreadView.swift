@@ -7,6 +7,10 @@ struct ThreadView: View {
 
     static let timeGutter: CGFloat = 76
     @State private var reveal: CGFloat = 0
+    /// True while the freshly opened thread is still growing (images, previews):
+    /// the bottom stays pinned without animation. After that, growth from new
+    /// messages is scrolled into view *with* animation so the stream slides up.
+    @State private var settling = true
 
     private enum Row: Identifiable {
         case stamp(Date)
@@ -83,16 +87,22 @@ struct ThreadView: View {
                 // afterwards. No programmatic scrolling on open at all.
                 .id(messages.isEmpty ? "empty" : "loaded")
                 .defaultScrollAnchor(.bottom)
-                .defaultScrollAnchor(.bottom, for: .sizeChanges)
+                .defaultScrollAnchor(settling ? .bottom : nil, for: .sizeChanges)
                 .background(TimeRevealGesture(reveal: $reveal, maxReveal: Self.timeGutter))
+                .task(id: messages.isEmpty) {
+                    // Pin the bottom while the first layout settles, then hand over to animated scrolling.
+                    settling = true
+                    guard !messages.isEmpty else { return }
+                    try? await Task.sleep(for: .milliseconds(1200))
+                    settling = false
+                }
                 .onChange(of: messages.count) { old, new in
-                    // Someone sent or we received: slide to it. (The first load is handled by the anchor.)
-                    if old > 0, new > old {
-                        withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("bottom", anchor: .bottom) }
-                    }
+                    // A message arrived (or ours was stored): the stream slides up to it.
+                    if old > 0, new > old { slideToBottom(proxy, .easeOut(duration: 0.25)) }
                 }
                 .onChange(of: outgoing.count) { old, new in
-                    if new > old { withAnimation(.spring(duration: 0.35)) { proxy.scrollTo("bottom", anchor: .bottom) } }
+                    // Our bubble rises out of the composer and everything above moves up with it.
+                    if new > old { slideToBottom(proxy, .spring(duration: 0.4, bounce: 0.1)) }
                 }
                 .overlay {
                     // `messages[convId] == nil` means not read from disk yet — don't flash "no messages".
@@ -133,6 +143,15 @@ struct ThreadView: View {
                         .help("Open this thread on linkedin.com (⇧⌘O)")
                 }
             }
+        }
+    }
+
+    /// Scrolls after the new row has been laid out, so the offset change itself
+    /// animates (the stream visibly moves up) instead of snapping.
+    private func slideToBottom(_ proxy: ScrollViewProxy, _ animation: Animation) {
+        settling = false
+        DispatchQueue.main.async {
+            withAnimation(animation) { proxy.scrollTo("bottom", anchor: .bottom) }
         }
     }
 

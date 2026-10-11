@@ -365,10 +365,10 @@ final class InboxModel {
 
     /// Dev snapshots only: render the in-flight and failed states without sending anything.
     func debugInjectOutgoing(_ convId: String) {
-        outgoing[convId] = [
+        withAnimation(.spring(duration: 0.35)) { outgoing[convId] = [ 
             OutgoingMessage(id: "dbg-1", convId: convId, body: "On my way — see you at 5!", createdAt: Date(), replyTo: nil, state: .sending),
             OutgoingMessage(id: "dbg-2", convId: convId, body: "Also, can you forward the deck?", createdAt: Date(), replyTo: nil, state: .failed("New messages arrived in this thread — read them, then try again.")),
-        ]
+        ] }
     }
 
     func discardOutgoing(_ id: String, in convId: String) {

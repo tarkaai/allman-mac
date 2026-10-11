@@ -33,6 +33,8 @@ struct AllmanApp: App {
                     .keyboardShortcut("r", modifiers: .command)
                 Button("Full Re-sync (7 days)") { model.engine.syncNow(from: "7d", resync: true) }
                     .keyboardShortcut("r", modifiers: [.command, .shift])
+                Button("Sync Older History…") { model.openInbox(convId: nil); NotificationCenter.default.post(name: .allmanSyncWindow, object: nil) }
+                    .keyboardShortcut("r", modifiers: [.command, .option])
                 Divider()
                 Button("Next Conversation") { model.inbox.selectNext() }
                     .keyboardShortcut(.downArrow, modifiers: .command)

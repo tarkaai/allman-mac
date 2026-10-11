@@ -13,6 +13,49 @@ the local-first LinkedIn messenger CLI. Two jobs:
    a compose sheet that finds people in your conversations, your connections, or on
    LinkedIn (`allman people`), native notifications with inline Reply, and read state
    mirrored to linkedin.com (`allman read`).
+3. **An organized, keyboard-first inbox.** Full-text search across every stored
+   message; labels that act as split inboxes (a thread can be in several); private
+   notes per contact; snooze and reminders; archive; saved-reply snippets with
+   `{firstName}`-style placeholders; a contact inspector fed by `allman enrich`;
+   and a Network window for your connections, enrichment and connection requests.
+
+## Inbox organization
+
+All of this is app-owned, per account, under `~/Library/Application Support/Allman/`
+(never in the store, so the CLI's git history stays clean):
+
+- **Search** matches names, headlines and the last message as you type; from three
+  characters it also scans every stored message body (what `allman grep` does) and
+  lists hits under *Messages*. Opening a hit jumps the thread to that message.
+- **Labels** tag a thread with any number of labels (`L` or `⇧⌘L`). Each label is its
+  own inbox: a chip strip above the list switches between them, and the filter menu
+  lists them too. Rename, recolor or delete from a chip's context menu.
+- **Notes** keep context on a person (`N` or `⇧⌘N`), in the inspector or a popover.
+- **Snooze** (`H` or `⇧⌘H`) hides a thread until a time — it comes back early if
+  they write. **Remind** keeps it in place and pings you at the time. Due reminders
+  post a notification, show a banner in the thread and a bell in the list; the clock
+  chip / *Snoozed & reminders* view lists them.
+- **Archive** (`E` or `⌘E`) clears a thread; a new message brings it back. Archive and
+  snooze show a toast with Undo (`⇧⌘Z`).
+- **Snippets** (`⇧⌘S`, the quote button, or a lone `/` in an empty field) insert saved
+  replies with `{firstName} {lastName} {name} {slug} {company} {title} {me}` filled in.
+  Manage them in Settings → Snippets. They share allman-tui's template format and are
+  seeded from `~/.config/allman-tui/templates.json` on first launch.
+- **Contact details** (`I` or `⌥⌘I`) show pronouns, degree, role, location, about,
+  experience, education and skills from the connections store once `allman enrich`
+  has run; *Fetch profile details* runs `allman enrich <slug> --deep` for one person.
+
+## Network window
+
+`⌘2` (or the Network button) opens your stored 1st-degree network as a sortable,
+searchable table — name, title, company, location, connected date, enrichment —
+with *Message*, *Open profile* and *Fetch details* per row. The toolbar drives the
+CLI's network jobs with live progress: **Pull Connections** (`allman connections`),
+**Enrich** up to N profiles (`allman enrich --json --limit N [--deep]`) and
+**Connect…** (`allman connect <slug> [--note …]`, with the 300-character cap, the
+CLI's duplicate / already-invited checks and its daily quota). *Invitations sent*
+lists what `invitations/` records. The compose sheet offers *Connect* on 2nd/3rd
+degree LinkedIn results.
 
 Everything on disk stays the CLI's: the app reads the store directly for speed and
 shells out to the `allman` binary for every write, so rate limiting, pre-send
@@ -70,7 +113,8 @@ publishes a GitHub release. Tags without a suffix are stable.
 - **Several accounts** can be signed in at once: every account keeps its own `allman listen` +
   periodic sync and sends notifications; the inbox window shows one at a time. Switch from the
   avatar in the sidebar toolbar, the panel header, or the Inbox menu; add one with **Add Account…**
-  (runs `allman login` for a new profile) and sign out from Settings → Accounts (`allman logout`).
+  (runs `allman login` for a new profile; *Options…* adds `--proxy host:port[:user:pass]` or
+  `--no-salesnav`) and sign out from Settings → Accounts (`allman logout`).
   Read watermarks and pins are kept per account.
 
 ## Local harness (no LinkedIn)
@@ -126,15 +170,24 @@ Settings override → `ALLMAN_BIN` → bundled `Contents/Resources/allman` → `
 | --- | --- |
 | `⌘I` (panel) | Open the inbox |
 | `⌘N` | New message |
-| `↑` / `↓` | Move through the list (when it has focus) |
+| `⌘2` | Network window |
+| `↑` / `↓` or `j` / `k` | Move through the list (when it has focus) |
+| `e` / `h` / `l` / `n` (list) | Archive / snooze / labels / note for the selected thread |
+| `u` / `i` (list) | Toggle unread-only / contact details |
 | `⌘↓` / `⌘↑` | Next / previous conversation from anywhere |
 | `⌥⌘↓` / `⌥⌘↑` | Next / previous unread |
 | `↩` or `Space` (list) | Jump to the message field; `Esc` goes back to the list |
 | `⌘F` / `⌘L` | Focus search / the message field |
 | `⇧⌘P` | Pin or unpin the open thread |
+| `⇧⌘L` / `⇧⌘H` / `⇧⌘N` | Labels / snooze & remind / note |
+| `⌘E` | Archive or unarchive |
+| `⇧⌘Z` | Undo the last archive or snooze |
+| `⇧⌘S` | Insert a snippet |
+| `⌥⌘I` | Show or hide contact details |
 | `↩` | Send (`⌥↩` for a newline) |
 | `⌘R` | Sync the last day |
 | `⇧⌘R` | Full re-sync of the last 7 days |
+| `⌥⌘R` | Sync older history (pick a window or a date) |
 | `⇧⌘U` | Toggle unread-only |
 | `⇧⌘K` | Mark all as read |
 | `⇧⌘O` | Open thread on linkedin.com |
@@ -144,7 +197,10 @@ Settings override → `ALLMAN_BIN` → bundled `Contents/Resources/allman` → `
 - `open dist/Allman.app --env ALLMAN_SNAPSHOT_DIR=/tmp/shots` renders the inbox window (plus the
   swipe-reveal state and unread filter), the menu bar panel, the sign-in state and Settings to PNG and
   quits — useful for reviewing the UI without screen-recording permission. Add `ALLMAN_SNAPSHOT_CONV=<name>`
-  to pick the thread, `ALLMAN_SNAPSHOT_COMPOSE=<query>` to capture the compose sheet, and
+  to pick the thread, `ALLMAN_SNAPSHOT_COMPOSE=<query>` to capture the compose sheet,
+  `ALLMAN_SNAPSHOT_SEARCH=<query>` for full-text search, `ALLMAN_SNAPSHOT_ORGANIZE=1` for labels,
+  notes and reminders, `ALLMAN_SNAPSHOT_SNIPPETS=1` for the snippet picker, `ALLMAN_SNAPSHOT_NETWORK=1`
+  for the Network window, and
   `ALLMAN_SNAPSHOT_PINS=a,b,c` to pin threads for the capture (restored afterwards).
 - Notifications need the app to run from a real `.app` bundle (they do from `dist/` or Xcode).
 - Launch at Login uses `SMAppService`; macOS may ignore it for apps outside `/Applications`.

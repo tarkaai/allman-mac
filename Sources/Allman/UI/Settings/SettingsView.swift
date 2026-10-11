@@ -17,6 +17,9 @@ struct GeneralSettingsView: View {
     @AppStorage(AllmanBinary.overrideKey) private var binaryOverride = ""
     @AppStorage(Notifier.enabledKey) private var notificationsEnabled = true
     @AppStorage(SyncEngine.syncIntervalKey) private var syncInterval = 15
+    @State private var addingWithOptions = false
+    @State private var proxy = ""
+    @State private var captureSalesNav = true
 
     var body: some View {
         Form {
@@ -48,6 +51,24 @@ struct GeneralSettingsView: View {
                 HStack {
                     Button(model.isAddingAccount ? "Waiting for browser sign-in…" : "Add Account…") { model.addAccount() }
                         .disabled(model.isAddingAccount)
+                    Button("Options…") { addingWithOptions = true }
+                        .disabled(model.isAddingAccount)
+                        .help("Sign in through an HTTP proxy, or skip the Sales Navigator seat capture")
+                        .popover(isPresented: $addingWithOptions, arrowEdge: .bottom) {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Add account with options").font(.headline)
+                                TextField("Proxy host:port[:user:pass] (optional)", text: $proxy).textFieldStyle(.roundedBorder)
+                                Text("Saved to the account's config.json; every request for this account goes through it.").font(.caption).foregroundStyle(.secondary)
+                                Toggle("Capture Sales Navigator seat (visits /sales/ once)", isOn: $captureSalesNav)
+                                HStack {
+                                    Spacer()
+                                    Button("Sign In…") { addingWithOptions = false; model.addAccount(proxy: proxy, captureSalesNav: captureSalesNav) }
+                                        .keyboardShortcut(.defaultAction)
+                                }
+                            }
+                            .padding(14)
+                            .frame(width: 380)
+                        }
                     Spacer()
                     Text(model.sessions.isEmpty ? "Sign in to LinkedIn to get started." : "Every account syncs and notifies; the inbox shows one at a time.")
                         .font(.caption).foregroundStyle(.secondary)

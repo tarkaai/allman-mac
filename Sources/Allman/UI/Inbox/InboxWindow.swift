@@ -5,6 +5,7 @@ struct InboxWindow: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openWindow) private var openWindow
     @State private var composing = false
+    @State private var choosingSyncWindow = false
 
     var body: some View {
         @Bindable var inbox = model.inbox
@@ -47,6 +48,8 @@ struct InboxWindow: View {
         .sheet(isPresented: $composing) { ComposeSheet().environment(model) }
         .onAppear { model.openNetworkWindow = { openWindow(id: "network") } }
         .onReceive(NotificationCenter.default.publisher(for: .allmanCompose)) { _ in composing = true }
+        .onReceive(NotificationCenter.default.publisher(for: .allmanSyncWindow)) { _ in choosingSyncWindow = true }
+        .sheet(isPresented: $choosingSyncWindow) { SyncWindowSheet().environment(model) }
         .frame(minWidth: 820, minHeight: 520)
         .background(WindowAccessor { window in
             window.identifier = NSUserInterfaceItemIdentifier("inbox")
@@ -78,6 +81,7 @@ struct InboxWindow: View {
 
 extension Notification.Name {
     static let allmanCompose = Notification.Name("sh.allman.mac.compose")
+    static let allmanSyncWindow = Notification.Name("sh.allman.mac.syncWindow")
 }
 
 /// Grabs the hosting NSWindow so we can tag it and tweak it.

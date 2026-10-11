@@ -242,11 +242,14 @@ final class AppModel {
 
     /// `allman login` with no account: the browser sign-in creates a new store
     /// directory, and bootstrap picks it up. Existing accounts keep syncing.
-    func addAccount() {
+    func addAccount(proxy: String? = nil, captureSalesNav: Bool = true) {
         guard loginProc == nil else { return }
         guard let bin = AllmanBinary.resolve() else { idleEngine.markNeedsLogin(reason: nil); return }
         isAddingAccount = true
-        let proc = AllmanProcess(binary: bin, arguments: ["login"], storeURL: storeURL, account: nil)
+        var args = ["login"]
+        if let proxy, !proxy.trimmingCharacters(in: .whitespaces).isEmpty { args += ["--proxy", proxy.trimmingCharacters(in: .whitespaces)] }
+        if !captureSalesNav { args.append("--no-salesnav") }
+        let proc = AllmanProcess(binary: bin, arguments: args, storeURL: storeURL, account: nil)
         loginProc = proc
         let before = Set(sessions.map(\.id))
         proc.onExit = { [weak self] code, stderr in

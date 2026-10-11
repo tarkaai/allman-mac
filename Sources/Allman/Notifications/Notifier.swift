@@ -11,8 +11,10 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     static let replyAction = "REPLY"
     static let openAction = "OPEN"
 
-    var onOpenConversation: ((String) -> Void)?
-    var onReply: ((String, String) -> Void)?
+    /// (accountId, convId) — convId is empty for a summary/error notification.
+    var onOpenConversation: ((String?, String) -> Void)?
+    /// (accountId, convId, text)
+    var onReply: ((String?, String, String) -> Void)?
 
     private(set) var authorized = false
 
@@ -36,7 +38,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    func notifyMessage(convId: String, sender: String, body: String, urn: String) {
+    func notifyMessage(accountId: String? = nil, convId: String, sender: String, body: String, urn: String) {
         guard isEnabled else { return }
         let content = UNMutableNotificationContent()
         content.title = sender
@@ -44,7 +46,9 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         content.sound = .default
         content.categoryIdentifier = Self.category
         content.threadIdentifier = convId
-        content.userInfo = ["convId": convId, "urn": urn]
+        var info: [String: Any] = ["convId": convId, "urn": urn]
+        if let accountId { info["accountId"] = accountId }
+        content.userInfo = info
         let req = UNNotificationRequest(identifier: "msg:\(urn)", content: content, trigger: nil)
         UNUserNotificationCenter.current().add(req)
     }
@@ -86,15 +90,16 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         let info = response.notification.request.content.userInfo
         let convId = info["convId"] as? String
+        let accountId = info["accountId"] as? String
         let action = response.actionIdentifier
         let text = (response as? UNTextInputNotificationResponse)?.userText
         await MainActor.run {
             if action == Self.replyAction, let convId, let text, !text.trimmingCharacters(in: .whitespaces).isEmpty {
-                onReply?(convId, text)
+                onReply?(accountId, convId, text)
             } else if let convId {
-                onOpenConversation?(convId)
+                onOpenConversation?(accountId, convId)
             } else {
-                onOpenConversation?("")
+                onOpenConversation?(accountId, "")
             }
         }
     }

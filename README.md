@@ -32,7 +32,7 @@ macOS 26 on Apple Silicon.
 
 - macOS 26 (Tahoe) or later — the UI uses Liquid Glass and the macOS 26 SwiftUI APIs.
 - Xcode 26 and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`) to build.
-- An `allman` binary to embed, **0.4 or newer** (it needs `read`, `people` and `send --reply-to`):
+- An `allman` binary to embed, **0.5 or newer** (it needs `read`, `people`, `whoami` and `send --reply-to`):
   `curl -fsSL https://allman.sh/install.sh | bash`, or build `allman-cli` and set `ALLMAN_BIN`.
 
 ## Build & run
@@ -60,6 +60,18 @@ Bump `MARKETING_VERSION` in `project.yml` first. The script runs the unit tests,
 CLI's `darwin-arm64` release binary (checksum-verified), builds Release/arm64, checks the embedded
 CLI reports the expected version, zips `dist/Allman-<version>-arm64.zip`, tags `v<version>` and
 publishes a GitHub release. Tags without a suffix are stable.
+
+## Menu bar and accounts
+
+- **Click** the menu bar icon to open the inbox; **right-click** (or control-click) for the status
+  panel: who is signed in, live/sync state, recent activity, Launch at Login, Settings, Quit.
+- The panel and the sidebar show your own LinkedIn profile (photo, name, headline). The app runs
+  `allman whoami --refresh` once per launch so `AUTH.json` carries them.
+- **Several accounts** can be signed in at once: every account keeps its own `allman listen` +
+  periodic sync and sends notifications; the inbox window shows one at a time. Switch from the
+  avatar in the sidebar toolbar, the panel header, or the Inbox menu; add one with **Add Account…**
+  (runs `allman login` for a new profile) and sign out from Settings → Accounts (`allman logout`).
+  Read watermarks and pins are kept per account.
 
 ## How it works
 

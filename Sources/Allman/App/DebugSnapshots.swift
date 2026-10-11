@@ -44,6 +44,10 @@ enum DebugSnapshots {
             model.openInbox(convId: target?.record.convId)
             try? await Task.sleep(for: .seconds(4))
             if let w = NSApp.windows.first(where: AppDelegate.isInbox) {
+                // Deterministic layout regardless of the restored frame.
+                w.setContentSize(NSSize(width: 1080, height: 700))
+                w.center()
+                try? await Task.sleep(for: .seconds(1))
                 capture(w, to: out.appendingPathComponent("inbox.png"))
                 model.debugShowTimes = true
                 try? await Task.sleep(for: .seconds(1))
@@ -62,6 +66,16 @@ enum DebugSnapshots {
                         capture(w, to: out.appendingPathComponent("compose.png")) // whole window incl. sheet
                     }
                 }
+            }
+
+            // The real status-item popover (right-click on the menu bar icon).
+            if let controller = StatusItemController.shared {
+                controller.showPanel()
+                try? await Task.sleep(for: .seconds(2))
+                if let pop = NSApp.windows.first(where: { String(describing: type(of: $0)).contains("Popover") && $0.isVisible }) {
+                    capture(pop, to: out.appendingPathComponent("popover.png"))
+                }
+                controller.closePanel()
             }
 
             let panel = NSWindow(contentRect: .zero, styleMask: [.borderless], backing: .buffered, defer: false)

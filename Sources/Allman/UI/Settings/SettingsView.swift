@@ -10,23 +10,40 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            Section("Account") {
-                if model.accounts.isEmpty {
-                    LabeledContent("LinkedIn account") {
-                        Button("Sign in…") { model.engine.login() }
+            Section {
+                ForEach(model.sessions) { session in
+                    HStack(spacing: 12) {
+                        AccountHeader(session: session, size: 40)
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 4) {
+                            StatusBadge(status: session.engine.status, syncing: session.engine.isSyncing)
+                            HStack(spacing: 6) {
+                                if session.id != model.current?.id {
+                                    Button("Show in Inbox") { model.select(accountId: session.id) }
+                                } else {
+                                    Text("Shown in Inbox").font(.caption).foregroundStyle(.secondary)
+                                }
+                                if session.isAuthenticated {
+                                    Button("Sign Out") { model.signOut(session) }
+                                } else {
+                                    Button("Sign In…") { session.engine.login() }
+                                        .disabled(session.engine.status == .loggingIn)
+                                }
+                            }
+                            .controlSize(.small)
+                        }
                     }
-                } else {
-                    Picker("LinkedIn account", selection: Binding(
-                        get: { model.account?.slug ?? "" },
-                        set: { model.selectAccount($0) }
-                    )) {
-                        ForEach(model.accounts) { a in Text("\(a.slug == model.account?.slug ? model.accountDisplayName : a.displayName) (@\(a.slug))").tag(a.slug) }
-                    }
-                    if let a = model.account {
-                        LabeledContent("Status", value: a.auth.isAuthenticated ? "Signed in" : "Signed out")
-                        Button("Re-authenticate…") { model.engine.login() }
-                    }
+                    .padding(.vertical, 2)
                 }
+                HStack {
+                    Button(model.isAddingAccount ? "Waiting for browser sign-in…" : "Add Account…") { model.addAccount() }
+                        .disabled(model.isAddingAccount)
+                    Spacer()
+                    Text(model.sessions.isEmpty ? "Sign in to LinkedIn to get started." : "Every account syncs and notifies; the inbox shows one at a time.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("Accounts")
             }
 
             Section("Store") {

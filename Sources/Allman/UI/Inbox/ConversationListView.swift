@@ -51,6 +51,19 @@ struct ConversationListView: View {
         .toolbar {
             ToolbarItem(placement: .principal) {
                 HStack(spacing: 8) {
+                    if let session = model.current {
+                        AccountMenu {
+                            AvatarView(url: session.avatarURL, name: session.displayName, size: 22)
+                                .overlay(alignment: .bottomTrailing) {
+                                    if model.sessions.count > 1 {
+                                        Image(systemName: "chevron.down.circle.fill")
+                                            .font(.system(size: 9)).symbolRenderingMode(.palette)
+                                            .foregroundStyle(.white, .secondary)
+                                            .offset(x: 2, y: 2)
+                                    }
+                                }
+                        }
+                    }
                     StatusBadge(status: model.engine.status, syncing: model.engine.isSyncing, compact: true)
                         .help(model.engine.status.label)
                     Text(countText(inbox))

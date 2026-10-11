@@ -34,7 +34,7 @@ final class InboxModel {
     private(set) var isLoading = false
     private(set) var loadingThread: Set<String> = []
     private(set) var backfilling: Set<String> = []
-    var readState = ReadState.load() { didSet { recompute() } }
+    var readState: ReadState { didSet { recompute() } }
     var selectedConvId: String? { didSet { recompute() } }
     var searchText = "" { didSet { recompute() } }
     var filter: Filter = .all { didSet { recompute() } }
@@ -64,7 +64,10 @@ final class InboxModel {
     private var backfilled: Set<String> = []
     private var reloadGeneration = 0
 
-    init(reader: StoreReader) { self.reader = reader }
+    init(reader: StoreReader, readState: ReadState = ReadState.load()) {
+        self.reader = reader
+        self.readState = readState
+    }
 
     // MARK: Derived
 

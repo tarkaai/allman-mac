@@ -1,32 +1,26 @@
 // Allman for Mac — a menu bar companion to the allman LinkedIn messenger CLI.
 // Keeps ~/.allman live wherever the Mac goes, and puts a native inbox on top.
+//
+// The status item is AppKit (StatusItemController) so a left-click can open the
+// inbox and a right-click the panel. The inbox stays a SwiftUI Window scene; AppKit
+// opens it by sending the app its own `allman://inbox` URL, which the scene handles.
 
 import SwiftUI
 
 @main
 struct AllmanApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    @Environment(\.openWindow) private var openWindow
 
     private var model: AppModel { AppModel.shared }
 
     var body: some Scene {
-        MenuBarExtra {
-            StatusPanelView()
-                .environment(model)
-        } label: {
-            MenuBarLabel()
-                .environment(model)
-                .task { model.openInboxWindow = { openWindow(id: "inbox") } }
-        }
-        .menuBarExtraStyle(.window)
-
         Window("Inbox", id: "inbox") {
             InboxWindow()
                 .environment(model)
         }
         .defaultSize(width: 1080, height: 700)
         .windowResizability(.contentMinSize)
+        .handlesExternalEvents(matching: ["inbox"])
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandMenu("Inbox") {
@@ -67,6 +61,12 @@ struct AllmanApp: App {
                 }
                 .disabled(model.inbox.selected == nil)
                 .keyboardShortcut("o", modifiers: [.command, .shift])
+                if model.sessions.count > 1 {
+                    Divider()
+                    Picker("Account", selection: Binding(get: { model.currentId ?? "" }, set: { model.select(accountId: $0) })) {
+                        ForEach(model.sessions) { s in Text("\(s.displayName) (@\(s.slug))").tag(s.id) }
+                    }
+                }
             }
         }
 

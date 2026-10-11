@@ -5,8 +5,6 @@ import SwiftUI
 
 struct StatusPanelView: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.openWindow) private var openWindow
-    @Environment(\.openSettings) private var openSettings
     @State private var tick = Date()
 
     private let timer = Timer.publish(every: 15, on: .main, in: .common).autoconnect()
@@ -17,6 +15,10 @@ struct StatusPanelView: View {
             header
             Divider()
             statusSection
+            if model.sessions.count > 1 {
+                Divider()
+                accountsSection
+            }
             Divider()
             activitySection
             Divider()
@@ -24,10 +26,6 @@ struct StatusPanelView: View {
         }
         .frame(width: 380)
         .onReceive(timer) { tick = $0 }
-        .task {
-            model.openInboxWindow = { openWindow(id: "inbox") }
-            model.openSettingsWindow = { openSettings() }
-        }
         .onAppear { model.refreshAccountAuth() }
         .animation(.default, value: engine.status)
     }
@@ -36,11 +34,13 @@ struct StatusPanelView: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            if let acct = model.account {
-                AvatarView(url: acct.auth.imageUrl.flatMap(URL.init(string:)), name: model.accountDisplayName, size: 36)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(model.accountDisplayName).font(.headline)
-                    Text("@\(acct.slug) · LinkedIn").font(.caption).foregroundStyle(.secondary)
+            if let session = model.current {
+                AccountMenu {
+                    HStack(spacing: 6) {
+                        AccountHeader(session: session)
+                        Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
+                    }
+                    .contentShape(Rectangle())
                 }
             } else {
                 Image(systemName: "person.crop.circle.badge.questionmark").font(.system(size: 30)).foregroundStyle(.secondary)
@@ -71,20 +71,23 @@ struct StatusPanelView: View {
                     }
                 } icon: { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
                 HStack {
-                    Button("Settings…") { openSettings() }.buttonStyle(.glass)
+                    Button("Settings…") { model.openSettings() }.buttonStyle(.glass)
                     Button("Try Again") { model.restart() }.buttonStyle(.glass)
                 }
             } else if engine.status == .needsLogin || engine.status == .loggingIn {
+                let waiting = engine.status == .loggingIn || model.isAddingAccount
                 Label {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(engine.status == .loggingIn ? "Finish signing in to LinkedIn in the browser window." : "Sign in to LinkedIn to start syncing.").fontWeight(.medium)
+                        Text(waiting ? "Finish signing in to LinkedIn in the browser window." : (model.current.map { "Sign in to LinkedIn as @\($0.slug) to start syncing." } ?? "Sign in to LinkedIn to start syncing.")).fontWeight(.medium)
                         Text("Your session stays on this Mac — nothing is sent anywhere else.").font(.caption).foregroundStyle(.secondary)
                     }
                 } icon: { Image(systemName: "person.crop.circle.badge.exclamationmark").foregroundStyle(.orange) }
                 HStack {
-                    Button(engine.status == .loggingIn ? "Waiting…" : "Sign in to LinkedIn") { engine.login() }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(engine.status == .loggingIn)
+                    Button(waiting ? "Waiting…" : "Sign in to LinkedIn") {
+                        if model.current != nil { engine.login() } else { model.addAccount() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(waiting)
                     if model.account != nil {
                         Button("Open Inbox") { model.openInbox(convId: nil) }
                     }
@@ -131,6 +134,45 @@ struct StatusPanelView: View {
         .padding(.vertical, 10)
     }
 
+    // MARK: Accounts (only when more than one is signed in)
+
+    private var accountsSection: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Accounts").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                .padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 4)
+            ForEach(model.sessions) { session in
+                Button {
+                    model.openInbox(accountId: session.id, convId: nil)
+                } label: {
+                    HStack(spacing: 8) {
+                        AvatarView(url: session.avatarURL, name: session.displayName, size: 22)
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(session.displayName).font(.callout).lineLimit(1)
+                            Text("@\(session.slug)").font(.caption2).foregroundStyle(.tertiary)
+                        }
+                        Spacer()
+                        if session.unreadCount > 0 {
+                            Text("\(session.unreadCount)")
+                                .font(.caption2.weight(.semibold)).monospacedDigit()
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(Color.accentColor, in: Capsule())
+                        }
+                        StatusBadge(status: session.engine.status, syncing: session.engine.isSyncing, compact: true)
+                        if session.id == model.current?.id {
+                            Image(systemName: "checkmark").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 14).padding(.vertical, 4)
+                .help("Open @\(session.slug)'s inbox")
+            }
+        }
+        .padding(.bottom, 6)
+    }
+
     // MARK: Activity
 
     private var activitySection: some View {
@@ -175,9 +217,10 @@ struct StatusPanelView: View {
                 .toggleStyle(.checkbox)
                 .font(.callout)
             Spacer()
-            Button("Settings…") { openSettings() }
+            SettingsLink { Text("Settings…") }
                 .buttonStyle(.plain).font(.callout)
                 .keyboardShortcut(",", modifiers: .command)
+                .simultaneousGesture(TapGesture().onEnded { model.closePanel?() })
             Button("Quit") { NSApp.terminate(nil) }
                 .buttonStyle(.plain).font(.callout)
                 .keyboardShortcut("q", modifiers: .command)

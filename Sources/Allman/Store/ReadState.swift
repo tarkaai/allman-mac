@@ -14,17 +14,37 @@ struct ReadState: Codable {
     /// Pinned conversation ids, in display order (Messages-style favorites).
     var pinned: [String]? = []
 
-    static let fileURL = StorePaths.appSupportURL.appendingPathComponent("read-state.json")
+    /// Where this state persists. Not encoded; set by `load(accountId:)`.
+    var fileURL: URL?
 
-    static func load() -> ReadState {
-        guard let data = try? Data(contentsOf: fileURL),
-              let s = try? JSONDecoder().decode(ReadState.self, from: data) else { return ReadState() }
-        return s
+    private enum CodingKeys: String, CodingKey { case seenAt, baseline, notified, pinned }
+
+    /// Pre-multi-account file; migrated into the first account's file on first load.
+    static let legacyFileURL = StorePaths.appSupportURL.appendingPathComponent("read-state.json")
+
+    static func fileURL(accountId: String?) -> URL {
+        guard let accountId, !accountId.isEmpty else { return legacyFileURL }
+        let safe = accountId.replacingOccurrences(of: "/", with: "_")
+        return StorePaths.appSupportURL.appendingPathComponent("read-state-\(safe).json")
+    }
+
+    /// Per-account state so two signed-in accounts never clobber each other's
+    /// watermarks and pins. The legacy single file seeds the first account.
+    static func load(accountId: String? = nil) -> ReadState {
+        let url = fileURL(accountId: accountId)
+        var state = read(url) ?? (accountId != nil ? read(legacyFileURL) : nil) ?? ReadState()
+        state.fileURL = url
+        return state
+    }
+
+    private static func read(_ url: URL) -> ReadState? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(ReadState.self, from: data)
     }
 
     func save() {
         guard let data = try? JSONEncoder().encode(self) else { return }
-        try? data.write(to: Self.fileURL, options: .atomic)
+        try? data.write(to: fileURL ?? Self.legacyFileURL, options: .atomic)
     }
 
     mutating func markSeen(_ convId: String, at ms: Int64) {

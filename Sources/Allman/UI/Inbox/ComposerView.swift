@@ -11,7 +11,7 @@ struct ComposerView: View {
     @FocusState private var focused: Bool
 
     private var canSend: Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !model.inbox.isSending
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
@@ -53,15 +53,9 @@ struct ComposerView: View {
                     .padding(.vertical, 6)
                     .frame(minHeight: 36) // one line is exactly as tall as the send button
                 Button(action: send) {
-                    Group {
-                        if inbox.isSending {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Image(systemName: "arrow.up.circle.fill")
-                                .font(.system(size: 24))
-                                .foregroundStyle(canSend ? Color(nsColor: .systemBlue) : Color.secondary.opacity(0.5))
-                        }
-                    }
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 24))
+                        .foregroundStyle(canSend ? Color(nsColor: .systemBlue) : Color.secondary.opacity(0.5))
                     // Same height as a one-line field, so the arrow is centered on the
                     // composing line and rides the last line as the field grows.
                     .frame(width: 30, height: 36)
@@ -88,7 +82,9 @@ struct ComposerView: View {
         text = ""
         Task {
             let ok = await model.inbox.send(body, to: convId)
-            if !ok { text = body } // give the draft back on failure
+            // A thread send that fails stays in the stream as "Not Delivered"; a draft
+            // (no thread yet) has nowhere to live, so hand the text back.
+            if !ok, convId.hasPrefix("draft:") { text = body }
         }
     }
 }

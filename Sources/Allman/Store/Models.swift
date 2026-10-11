@@ -103,6 +103,14 @@ struct Attachment: Codable, Hashable {
     let authorName: String?
     // `raw` is intentionally not modelled — Codable ignores unknown keys.
 
+    /// The "replied" quote an outgoing reply will carry once the CLI stores it.
+    init(replyingTo original: Message) {
+        type = "replied"; url = nil; name = nil; size = nil; mimeType = nil; previewUrl = nil
+        width = nil; height = nil; durationMs = nil; title = nil; description = nil
+        originalText = original.previewText
+        authorName = original.isFromMe ? "You" : original.fromName
+    }
+
     /// Short placeholder matching the CLI's INBOX.jsonl summaries.
     var summary: String {
         switch type {

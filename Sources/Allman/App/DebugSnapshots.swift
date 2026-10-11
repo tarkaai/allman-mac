@@ -59,6 +59,12 @@ enum DebugSnapshots {
                 }
             }
             try? await Task.sleep(for: .seconds(2))
+            if ProcessInfo.processInfo.environment["ALLMAN_SNAPSHOT_OUTGOING"] != nil, let conv = target?.record.convId {
+                model.inbox.debugInjectOutgoing(conv)
+                try? await Task.sleep(for: .seconds(1))
+                if let w = NSApp.windows.first(where: AppDelegate.isInbox) { capture(w, to: out.appendingPathComponent("outgoing.png")) }
+                model.inbox.discardOutgoing("dbg-1", in: conv); model.inbox.discardOutgoing("dbg-2", in: conv)
+            }
             if let w = NSApp.windows.first(where: AppDelegate.isInbox) {
                 // Deterministic layout regardless of the restored frame.
                 w.setContentSize(NSSize(width: 1080, height: 700))

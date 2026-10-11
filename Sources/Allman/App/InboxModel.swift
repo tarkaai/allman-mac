@@ -3,6 +3,7 @@
 
 import Foundation
 import Observation
+import SwiftUI
 
 @MainActor
 @Observable
@@ -331,6 +332,49 @@ final class InboxModel {
     /// Message being replied to (LinkedIn "reply" quoting), per conversation.
     var replyingTo: [String: Message] = [:]
 
+    /// A message the user just sent, shown in the thread right away (iMessage
+    /// style) while `allman send` runs; replaced by the stored message on success.
+    struct OutgoingMessage: Identifiable, Equatable {
+        enum State: Equatable { case sending, failed(String) }
+        let id: String
+        let convId: String
+        let body: String
+        let createdAt: Date
+        let replyTo: Message?
+        var state: State = .sending
+
+        /// What the thread renders: a from-me message carrying the quote if any.
+        var asMessage: Message {
+            var attachments: [Attachment] = []
+            if let r = replyTo {
+                attachments.append(Attachment(replyingTo: r))
+            }
+            return Message(urn: "outgoing:\(id)", timestamp: Int64(createdAt.timeIntervalSince1970 * 1000), fromUrn: nil, fromName: nil, isFromMe: true, body: body, reactions: [], attachments: attachments, originToken: nil, subject: nil)
+        }
+    }
+    /// In-flight and failed sends per conversation, oldest first.
+    private(set) var outgoing: [String: [OutgoingMessage]] = [:]
+    func outgoingMessages(_ convId: String) -> [OutgoingMessage] { outgoing[convId] ?? [] }
+
+    func retry(_ id: String, in convId: String) {
+        guard let item = outgoing[convId]?.first(where: { $0.id == id }) else { return }
+        withAnimation { outgoing[convId]?.removeAll { $0.id == id } }
+        if let r = item.replyTo { replyingTo[convId] = r }
+        Task { _ = await send(item.body, to: convId) }
+    }
+
+    /// Dev snapshots only: render the in-flight and failed states without sending anything.
+    func debugInjectOutgoing(_ convId: String) {
+        outgoing[convId] = [
+            OutgoingMessage(id: "dbg-1", convId: convId, body: "On my way — see you at 5!", createdAt: Date(), replyTo: nil, state: .sending),
+            OutgoingMessage(id: "dbg-2", convId: convId, body: "Also, can you forward the deck?", createdAt: Date(), replyTo: nil, state: .failed("New messages arrived in this thread — read them, then try again.")),
+        ]
+    }
+
+    func discardOutgoing(_ id: String, in convId: String) {
+        withAnimation { outgoing[convId]?.removeAll { $0.id == id } }
+    }
+
     // MARK: Compose
 
     private(set) var connections: [Connection] = []
@@ -371,30 +415,44 @@ final class InboxModel {
         guard !body.isEmpty else { return false }
         if target.hasPrefix("draft:") { return await sendDraft(body, context: ctx) }
         guard let snap = byId[target] else { return false }
+
+        // Show it in the thread immediately; the CLI call runs behind it.
+        let reply = replyingTo[target]
+        replyingTo[target] = nil
+        let item = OutgoingMessage(id: UUID().uuidString, convId: target, body: body, createdAt: Date(), replyTo: reply)
+        withAnimation(.spring(duration: 0.35)) { outgoing[target, default: []].append(item) }
         isSending = true
         composerError = nil
-        defer { isSending = false }
+        defer { isSending = !outgoing.values.allSatisfy { $0.allSatisfy { if case .failed = $0.state { return true } else { return false } } } }
+
+        var args = ["send", snap.record.sendTarget, body, "--json"]
+        if let reply { args += ["--reply-to", reply.urn] }
         do {
-            var args = ["send", snap.record.sendTarget, body, "--json"]
-            if let reply = replyingTo[target] { args += ["--reply-to", reply.urn] }
             _ = try await AllmanRunner.runJSON(args, as: SendResult.self, context: ctx, timeout: 60)
-            replyingTo[target] = nil
             await reload(convIds: [target])
+            // The stored copy is on screen now; drop the placeholder without a flash.
+            withAnimation(nil) { outgoing[target]?.removeAll { $0.id == item.id } }
             markSeen(target)
             return true
-        } catch let err as AllmanError {
-            // The CLI aborts when new inbound messages arrived since the last sync.
-            if err.stderr.contains("received before send") {
-                composerError = "New messages arrived in this thread — read them, then send again."
-                await reload(convIds: [target])
-            } else if err.stderr.contains("unknown option") && err.stderr.contains("reply-to") {
-                composerError = "Replying to a specific message needs a newer allman CLI."
-            } else {
-                composerError = err.friendlyMessage
-            }
-            return false
         } catch {
-            composerError = error.localizedDescription
+            let reason: String
+            if let err = error as? AllmanError {
+                // The CLI aborts when new inbound messages arrived since the last sync.
+                if err.stderr.contains("received before send") {
+                    reason = "New messages arrived in this thread — read them, then try again."
+                    await reload(convIds: [target])
+                } else if err.stderr.contains("unknown option") && err.stderr.contains("reply-to") {
+                    reason = "Replying to a specific message needs a newer allman CLI."
+                } else {
+                    reason = err.friendlyMessage
+                }
+            } else {
+                reason = error.localizedDescription
+            }
+            if let i = outgoing[target]?.firstIndex(where: { $0.id == item.id }) {
+                outgoing[target]?[i].state = .failed(reason)
+            }
+            composerError = nil
             return false
         }
     }

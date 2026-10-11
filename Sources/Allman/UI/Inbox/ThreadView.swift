@@ -11,10 +11,12 @@ struct ThreadView: View {
     private enum Row: Identifiable {
         case stamp(Date)
         case message(Message, showsTail: Bool)
+        case outgoing(InboxModel.OutgoingMessage)
         var id: String {
             switch self {
             case .stamp(let d): return "stamp-\(d.timeIntervalSince1970)"
             case .message(let m, _): return m.id
+            case .outgoing(let o): return "outgoing-\(o.id)"
             }
         }
     }
@@ -23,7 +25,8 @@ struct ThreadView: View {
         let inbox = model.inbox
         let convId = snapshot.record.convId
         let messages = inbox.messages[convId] ?? []
-        let rows = rows(for: messages)
+        let outgoing = inbox.outgoingMessages(convId)
+        let rows = rows(for: messages, outgoing: outgoing)
         VStack(spacing: 0) {
             GeometryReader { geo in
             let maxBubble = max(260, (geo.size.width - 32) * 0.6)
@@ -51,6 +54,22 @@ struct ThreadView: View {
                                     onReply: { inbox.replyingTo[convId] = msg }
                                 )
                                 .id(msg.id)
+                            case .outgoing(let item):
+                                MessageRow(
+                                    message: item.asMessage,
+                                    contactName: snapshot.record.displayName,
+                                    showsTail: true,
+                                    reveal: model.debugShowTimes ? Self.timeGutter : reveal,
+                                    maxWidth: maxBubble,
+                                    pending: item.state,
+                                    onReact: { _ in },
+                                    onReply: {},
+                                    onRetry: { inbox.retry(item.id, in: convId) },
+                                    onDiscard: { inbox.discardOutgoing(item.id, in: convId) }
+                                )
+                                .id("outgoing-\(item.id)")
+                                // Rises out of the composer into the stream, like Messages.
+                                .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .identity))
                             }
                         }
                         Color.clear.frame(height: 1).id("bottom")
@@ -71,6 +90,9 @@ struct ThreadView: View {
                     if old > 0, new > old {
                         withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("bottom", anchor: .bottom) }
                     }
+                }
+                .onChange(of: outgoing.count) { old, new in
+                    if new > old { withAnimation(.spring(duration: 0.35)) { proxy.scrollTo("bottom", anchor: .bottom) } }
                 }
                 .overlay {
                     // `messages[convId] == nil` means not read from disk yet — don't flash "no messages".
@@ -116,7 +138,7 @@ struct ThreadView: View {
 
     /// One day divider per calendar day, and a tail only on the last bubble
     /// of a run from the same side.
-    private func rows(for messages: [Message]) -> [Row] {
+    private func rows(for messages: [Message], outgoing: [InboxModel.OutgoingMessage] = []) -> [Row] {
         var out: [Row] = []
         var prev: Message?
         let cal = Calendar.current
@@ -130,6 +152,14 @@ struct ThreadView: View {
             let tail = next == nil || next!.isFromMe != m.isFromMe || next!.timestamp - m.timestamp > 60 * 60 * 1000
             out.append(.message(m, showsTail: tail))
             prev = m
+        }
+        // Just-sent messages ride at the end, under today's divider if the thread's last day isn't today.
+        for o in outgoing {
+            if prev.map({ !cal.isDate(o.createdAt, inSameDayAs: $0.date) }) ?? true {
+                out.append(.stamp(o.createdAt))
+                prev = o.asMessage
+            }
+            out.append(.outgoing(o))
         }
         return out
     }
@@ -163,8 +193,12 @@ struct MessageRow: View {
     let maxWidth: CGFloat
     var media: [String: URL] = [:]
     var mediaLoading = false
+    /// Set for an optimistic bubble: lighter while sending, "Not Delivered" on failure.
+    var pending: InboxModel.OutgoingMessage.State? = nil
     let onReact: (String) -> Void
     let onReply: () -> Void
+    var onRetry: () -> Void = {}
+    var onDiscard: () -> Void = {}
 
     @State private var hovering = false
     @State private var showingPicker = false
@@ -175,6 +209,7 @@ struct MessageRow: View {
     var body: some View {
         let mine = message.isFromMe
         let hasReactions = !message.reactions.isEmpty
+        VStack(alignment: .trailing, spacing: 3) {
         HStack(alignment: .bottom, spacing: 0) {
             if mine { Spacer(minLength: 0) }
             bubble
@@ -182,11 +217,13 @@ struct MessageRow: View {
                     // Apple Messages tapback placement: on the top outer corner, pushed
                     // outward so it never sits over the text. The hover-only smiley
                     // hangs further outside.
-                    reactionsRow
-                        .fixedSize() // never squeeze to a narrow bubble's width
-                        .offset(x: mine ? -(Self.reactButtonSlot + 14) : Self.reactButtonSlot + 14, y: -12)
+                    if interactive {
+                        reactionsRow
+                            .fixedSize() // never squeeze to a narrow bubble's width
+                            .offset(x: mine ? -(Self.reactButtonSlot + 14) : Self.reactButtonSlot + 14, y: -12)
+                    }
                 }
-                .overlay(RightClickCatcher { showingPicker = true })
+                .overlay(RightClickCatcher { if interactive { showingPicker = true } })
                 .popover(isPresented: $showingPicker, arrowEdge: .bottom) {
                     ReactionPicker(
                         message: message,
@@ -214,11 +251,31 @@ struct MessageRow: View {
                 .allowsHitTesting(false)
         }
         .padding(.top, hasReactions ? 12 : 0)
-        .padding(.bottom, showsTail ? 6 : 0)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .accessibilityLabel("\(mine ? "You" : contactName), \(Fmt.clockTime(message.date)): \(message.previewText)")
+        if let pending {
+            switch pending {
+            case .sending:
+                Text("Sending…").font(.caption2).foregroundStyle(.secondary)
+            case .failed(let reason):
+                HStack(spacing: 8) {
+                    Label("Not Delivered", systemImage: "exclamationmark.circle.fill")
+                        .font(.caption2.weight(.semibold)).foregroundStyle(.red)
+                        .help(reason)
+                    Button("Try Again", action: onRetry).buttonStyle(.link).font(.caption2)
+                    Button("Delete", action: onDiscard).buttonStyle(.link).font(.caption2).foregroundStyle(.secondary)
+                }
+                Text(reason).font(.caption2).foregroundStyle(.secondary).lineLimit(2).multilineTextAlignment(.trailing)
+            }
+        }
+        }
+        .padding(.bottom, showsTail ? 6 : 0)
+        .allowsHitTesting(true)
     }
+
+    /// Reactions and the picker don't apply to a message LinkedIn hasn't stored yet.
+    private var interactive: Bool { pending == nil }
 
     private var bubble: some View {
         let mine = message.isFromMe
@@ -251,7 +308,13 @@ struct MessageRow: View {
         }
         .padding(.horizontal, 12).padding(.vertical, 7)
         .foregroundStyle(mine ? .white : .primary)
-        .background(mine ? BubbleStyle.outgoing : BubbleStyle.incoming, in: RoundedRectangle(cornerRadius: BubbleStyle.radius, style: .continuous))
+        .background(bubbleColor, in: RoundedRectangle(cornerRadius: BubbleStyle.radius, style: .continuous))
+    }
+
+    private var bubbleColor: Color {
+        guard message.isFromMe else { return BubbleStyle.incoming }
+        if case .sending = pending { return BubbleStyle.outgoing.opacity(0.55) } // lighter while in flight
+        return BubbleStyle.outgoing
     }
 
     /// Existing reactions (LinkedIn-style pill over the bubble edge) with the

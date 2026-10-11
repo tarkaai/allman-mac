@@ -38,6 +38,11 @@ final class AppModel {
     var closePanel: (() -> Void)?
     /// Dev snapshots only: show every bubble's timestamp as if hovered.
     var debugShowTimes = false
+    /// The contact inspector beside the thread (⌥⌘I). Remembered across launches.
+    static let inspectorKey = "inspectorVisible"
+    var inspectorVisible: Bool = UserDefaults.standard.bool(forKey: AppModel.inspectorKey) {
+        didSet { UserDefaults.standard.set(inspectorVisible, forKey: Self.inspectorKey) }
+    }
 
     private var lastNotifiedAt: [String: Int64] = [:]
     private var loginProc: AllmanProcess?

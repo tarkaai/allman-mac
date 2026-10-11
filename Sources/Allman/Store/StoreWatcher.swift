@@ -13,6 +13,7 @@ final class StoreWatcher {
         var convIds: Set<String> = []
         var authChanged = false
         var structural = false // conversation dir added/removed, symlinks, etc.
+        var connectionsChanged = false // connections/, invitations/, companies/ (allman connections / enrich / connect)
     }
 
     private let root: URL
@@ -78,6 +79,8 @@ final class StoreWatcher {
                 pending.convIds.insert(first)
             } else if first == "AUTH.json" {
                 pending.authChanged = true
+            } else if ["connections", "connections-salesnav", "connections-of", "invitations", "companies"].contains(first) {
+                pending.connectionsChanged = true
             } else if first.isEmpty || first.hasPrefix("ACo") || !first.contains(".") {
                 // account dir itself, a profile-id/slug symlink, or a new directory
                 pending.structural = true
@@ -88,7 +91,7 @@ final class StoreWatcher {
             guard let self else { return }
             let change = self.pending
             self.pending = Change()
-            guard !change.convIds.isEmpty || change.authChanged || change.structural else { return }
+            guard !change.convIds.isEmpty || change.authChanged || change.structural || change.connectionsChanged else { return }
             watchLog.notice("store changed: \(change.convIds.count) conversation(s) structural=\(change.structural) auth=\(change.authChanged)")
             DispatchQueue.main.async { self.onChange(change) }
         }

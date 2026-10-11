@@ -175,10 +175,12 @@ final class InboxModel {
             guard let self else { return }
             Task { @MainActor in
                 if change.structural { await self.reloadAll() } else if !change.convIds.isEmpty { await self.reload(convIds: change.convIds) }
+                if change.connectionsChanged { self.scheduleConnectionsReload() }
             }
         }
         w.start()
         watcher = w
+        loadConnectionsIfNeeded()
     }
 
     func detach() {
@@ -450,16 +452,78 @@ final class InboxModel {
     // MARK: Compose
 
     private(set) var connections: [Connection] = []
+    private(set) var connectionsBySlug: [String: Connection] = [:]
+    private(set) var connectionsById: [String: Connection] = [:]
     private var connectionsLoaded = false
+    private var connectionsReloadScheduled = false
     /// A recipient with no local thread yet; shown in place of the selected conversation.
     var draft: DraftRecipient? { didSet { recompute() } }
 
     func loadConnectionsIfNeeded() {
-        guard !connectionsLoaded, let dir = accountDir else { return }
+        guard !connectionsLoaded else { return }
         connectionsLoaded = true
+        Task { await reloadConnections() }
+    }
+
+    /// `connections/` is ~10k files; read it off the main thread.
+    func reloadConnections() async {
+        guard let dir = accountDir else { return }
         let reader = self.reader
+        let loaded = await Task.detached(priority: .utility) { reader.loadConnections(accountDir: dir) }.value
+        guard accountDir == dir else { return }
+        connections = loaded
+        var bySlug: [String: Connection] = [:], byId: [String: Connection] = [:]
+        for c in loaded { if let s = c.slug { bySlug[s] = c }; byId[c.flagshipId] = c }
+        connectionsBySlug = bySlug
+        connectionsById = byId
+    }
+
+    /// `allman enrich` / `connect` write one file at a time; coalesce into one reload.
+    private func scheduleConnectionsReload() {
+        guard !connectionsReloadScheduled else { return }
+        connectionsReloadScheduled = true
         Task { @MainActor in
-            connections = await Task.detached(priority: .utility) { reader.loadConnections(accountDir: dir) }.value
+            try? await Task.sleep(for: .seconds(3))
+            connectionsReloadScheduled = false
+            await reloadConnections()
+        }
+    }
+
+    /// The stored connection behind a conversation, when the person is a 1st-degree contact.
+    func connection(for record: ConversationRecord) -> Connection? {
+        if let s = record.slug, let c = connectionsBySlug[s] { return c }
+        if let p = record.profileId, let c = connectionsById[p] { return c }
+        return nil
+    }
+
+    /// Who is being fetched by `allman enrich` right now (slugs).
+    private(set) var enriching: Set<String> = []
+
+    /// `allman enrich <slug> --deep`: title, company, location, about, history. One
+    /// person, 4 requests, charged against the CLI's enrichment quota.
+    func enrich(slug: String, force: Bool = false) {
+        guard let ctx = context, !enriching.contains(slug) else { return }
+        enriching.insert(slug)
+        Task { @MainActor in
+            defer { enriching.remove(slug) }
+            var args = ["enrich", slug, "--deep", "--json"]
+            if force { args.append("--force") }
+            do {
+                _ = try await AllmanRunner.run(args, context: ctx, timeout: 180)
+                await reloadConnections()
+                toast = "Profile details updated"
+            } catch let err as AllmanError {
+                let s = err.stderr.lowercased()
+                if s.contains("quota") || s.contains("capacity") {
+                    toast = "Enrichment quota reached — the CLI will allow more later."
+                } else if s.contains("unknown command") {
+                    toast = "Fetching profile details needs a newer allman CLI."
+                } else {
+                    toast = "Couldn't fetch profile details: \(err.friendlyMessage)"
+                }
+            } catch {
+                toast = "Couldn't fetch profile details: \(error.localizedDescription)"
+            }
         }
     }
 

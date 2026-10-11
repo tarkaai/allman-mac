@@ -143,8 +143,12 @@ struct ThreadView: View {
             }
             ComposerView(convId: convId, firstName: snapshot.record.firstName ?? snapshot.record.displayName)
         }
+        .inspector(isPresented: Binding(get: { model.inspectorVisible }, set: { model.inspectorVisible = $0 })) {
+            ContactInspector(snapshot: snapshot)
+                .inspectorColumnWidth(min: 250, ideal: 300, max: 400)
+        }
         .navigationTitle(snapshot.record.displayName)
-        .navigationSubtitle(snapshot.record.headline ?? snapshot.record.slug.map { "@\($0)" } ?? "")
+        .navigationSubtitle(subtitle)
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 AvatarView(url: snapshot.record.avatarURL, name: snapshot.record.displayName, size: 26)
@@ -170,8 +174,18 @@ struct ThreadView: View {
                     Button { NSWorkspace.shared.open(url) } label: { Label("Open on LinkedIn", systemImage: "arrow.up.right.square") }
                         .help("Open this thread on linkedin.com (⇧⌘O)")
                 }
+                Button { model.inspectorVisible.toggle() } label: { Label("Contact Details", systemImage: model.inspectorVisible ? "info.circle.fill" : "info.circle") }
+                    .help(model.inspectorVisible ? "Hide contact details (⌥⌘I)" : "Show contact details (⌥⌘I)")
             }
         }
+    }
+
+    /// Enriched role line when the connections store has one, else the LinkedIn headline.
+    private var subtitle: String {
+        if let line = model.inbox.connection(for: snapshot.record)?.roleLine { return line }
+        if let h = snapshot.record.headline { return h }
+        if let s = snapshot.record.slug { return "@\(s)" }
+        return ""
     }
 
     /// Scrolls after the new row has been laid out, so the offset change itself

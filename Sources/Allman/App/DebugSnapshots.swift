@@ -87,6 +87,12 @@ enum DebugSnapshots {
                 w.center()
                 try? await Task.sleep(for: .seconds(1))
                 capture(w, to: out.appendingPathComponent("inbox.png"))
+                let hadInspector = model.inspectorVisible
+                model.inspectorVisible = true
+                try? await Task.sleep(for: .seconds(1.5))
+                capture(w, to: out.appendingPathComponent("inbox-inspector.png"))
+                model.inspectorVisible = hadInspector
+                try? await Task.sleep(for: .milliseconds(600))
                 model.debugShowTimes = true
                 try? await Task.sleep(for: .seconds(1))
                 capture(w, to: out.appendingPathComponent("inbox-times.png"))

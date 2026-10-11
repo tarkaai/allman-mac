@@ -87,6 +87,11 @@ enum Fmt {
 
     static func clockTime(_ date: Date) -> String { clock.string(from: date) }
 
+    static let monthDayYearFormatter: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "MMM d, yyyy"; return f
+    }()
+    static func monthDayYear(_ date: Date) -> String { monthDayYearFormatter.string(from: date) }
+
     static func initials(_ name: String) -> String {
         let tokens = name.split(separator: " ").map(String.init)
         let candidates = tokens.enumerated().compactMap { i, raw -> String? in

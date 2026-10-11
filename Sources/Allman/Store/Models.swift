@@ -103,14 +103,6 @@ struct Attachment: Codable, Hashable {
     let authorName: String?
     // `raw` is intentionally not modelled — Codable ignores unknown keys.
 
-    /// The "replied" quote an outgoing reply will carry once the CLI stores it.
-    init(replyingTo original: Message) {
-        type = "replied"; url = nil; name = nil; size = nil; mimeType = nil; previewUrl = nil
-        width = nil; height = nil; durationMs = nil; title = nil; description = nil
-        originalText = original.previewText
-        authorName = original.isFromMe ? "You" : original.fromName
-    }
-
     /// Short placeholder matching the CLI's INBOX.jsonl summaries.
     var summary: String {
         switch type {
@@ -224,5 +216,13 @@ enum ISO8601 {
     static func date(_ s: String?) -> Date? {
         guard let s, !s.isEmpty else { return nil }
         return withFractional.date(from: s) ?? plain.date(from: s)
+    }
+}
+
+extension Attachment {
+    /// The "replied" quote an outgoing reply will carry once the CLI stores it.
+    /// (In an extension so the struct keeps its memberwise init.)
+    init(replyingTo original: Message) {
+        self.init(type: "replied", url: nil, name: nil, size: nil, mimeType: nil, previewUrl: nil, width: nil, height: nil, durationMs: nil, title: nil, description: nil, originalText: original.previewText, authorName: original.isFromMe ? "You" : original.fromName)
     }
 }

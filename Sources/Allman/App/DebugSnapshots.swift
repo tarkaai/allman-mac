@@ -95,6 +95,19 @@ enum DebugSnapshots {
                 try? await Task.sleep(for: .seconds(1))
                 capture(w, to: out.appendingPathComponent("inbox-unread.png"))
                 model.inbox.filter = .all
+                // Full-text search (ALLMAN_SNAPSHOT_SEARCH=<query>): the results list, then the thread opened at the first hit.
+                if let q = ProcessInfo.processInfo.environment["ALLMAN_SNAPSHOT_SEARCH"], !q.isEmpty {
+                    model.inbox.searchText = q
+                    try? await Task.sleep(for: .seconds(3))
+                    capture(w, to: out.appendingPathComponent("search.png"))
+                    if let hit = model.inbox.messageHits.dropFirst(min(3, max(0, model.inbox.messageHits.count - 1))).first {
+                        model.inbox.open(hit: hit)
+                        try? await Task.sleep(for: .seconds(2))
+                        capture(w, to: out.appendingPathComponent("search-hit.png"))
+                    }
+                    model.inbox.searchText = ""
+                    try? await Task.sleep(for: .milliseconds(500))
+                }
                 if ProcessInfo.processInfo.environment["ALLMAN_SNAPSHOT_COMPOSE"] != nil {
                     NotificationCenter.default.post(name: .allmanCompose, object: nil)
                     try? await Task.sleep(for: .seconds(6)) // local + CLI search

@@ -8,26 +8,54 @@ struct ConversationListView: View {
     var body: some View {
         @Bindable var inbox = model.inbox
         let rows = inbox.filtered
-        let showPins = !inbox.pinnedSnapshots.isEmpty && inbox.searchText.trimmingCharacters(in: .whitespaces).isEmpty && inbox.filter == .all
+        let hits = inbox.isSearching ? inbox.messageHits : []
+        let showPins = !inbox.pinnedSnapshots.isEmpty && !inbox.isSearching && inbox.filter == .all
         Group {
-            if rows.isEmpty && !inbox.isLoading && !showPins {
+            if rows.isEmpty && hits.isEmpty && !inbox.isLoading && !showPins && !inbox.searchingMessages {
                 ContentUnavailableView {
                     Label(emptyTitle(inbox), systemImage: inbox.filter == .unread ? "checkmark.circle" : "magnifyingglass")
                 } description: {
-                    Text(inbox.searchText.isEmpty ? "Nothing matches this filter." : "Try another name, headline, or phrase.")
+                    Text(inbox.searchText.isEmpty ? "Nothing matches this filter." : (inbox.searchText.trimmingCharacters(in: .whitespaces).count < 3 ? "Type at least three characters to search inside messages." : "No conversation or message contains this."))
                 }
             } else {
-                List(selection: Binding(get: { inbox.selectedConvId }, set: { inbox.select($0) })) {
+                List(selection: $inbox.sidebarSelection) {
                     if showPins {
                         PinnedGrid()
                             .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 8, trailing: 8))
                             .listRowSeparator(.hidden)
                             .selectionDisabled()
                     }
-                    ForEach(rows) { snap in
-                        ConversationRow(snapshot: snap, unreadCount: inbox.unreadCount(snap))
-                            .tag(snap.record.convId)
-                            .contextMenu { rowMenu(snap) }
+                    if inbox.isSearching {
+                        if !rows.isEmpty {
+                            Section("Conversations") {
+                                ForEach(rows) { snap in
+                                    ConversationRow(snapshot: snap, unreadCount: inbox.unreadCount(snap))
+                                        .tag(snap.record.convId)
+                                        .contextMenu { rowMenu(snap) }
+                                }
+                            }
+                        }
+                        if !hits.isEmpty || inbox.searchingMessages {
+                            Section {
+                                ForEach(hits) { hit in
+                                    if let snap = inbox.byId[hit.convId] {
+                                        MessageHitRow(hit: hit, snapshot: snap, query: inbox.searchText)
+                                            .tag(hit.id)
+                                    }
+                                }
+                            } header: {
+                                HStack {
+                                    Text(hits.isEmpty ? "Messages" : "Messages (\(hits.count)\(hits.count >= 200 ? "+" : ""))")
+                                    if inbox.searchingMessages { ProgressView().controlSize(.mini) }
+                                }
+                            }
+                        }
+                    } else {
+                        ForEach(rows) { snap in
+                            ConversationRow(snapshot: snap, unreadCount: inbox.unreadCount(snap))
+                                .tag(snap.record.convId)
+                                .contextMenu { rowMenu(snap) }
+                        }
                     }
                 }
                 .listStyle(.sidebar)
@@ -125,7 +153,11 @@ struct ConversationListView: View {
     }
 
     private func countText(_ inbox: InboxModel) -> String {
-        if inbox.filter != .all || !inbox.searchText.isEmpty {
+        if inbox.isSearching {
+            let msgs = inbox.messageHits.count
+            return msgs > 0 ? "\(inbox.filtered.count) chats · \(msgs)\(msgs >= 200 ? "+" : "") messages" : "\(inbox.filtered.count) of \(inbox.snapshots.count)"
+        }
+        if inbox.filter != .all {
             // Don't count the pinned selection as a match.
             let pinned = inbox.selectedConvId.flatMap { id in inbox.filtered.first { $0.record.convId == id } }
             let matches = inbox.filtered.count - (pinned != nil && inbox.filter == .unread && !inbox.isUnread(pinned!) ? 1 : 0)
@@ -237,5 +269,45 @@ struct PinnedGrid: View {
                 }
             }
         }
+    }
+}
+
+
+/// A full-text search result: who, when, and the matching passage with the
+/// query emphasized. Selecting it opens the thread at that message.
+struct MessageHitRow: View {
+    let hit: MessageHit
+    let snapshot: ConversationSnapshot
+    let query: String
+
+    var body: some View {
+        let r = snapshot.record
+        HStack(alignment: .top, spacing: 10) {
+            AvatarView(url: r.avatarURL, name: r.displayName, size: 32)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(r.displayName).font(.callout.weight(.medium)).lineLimit(1)
+                    Spacer(minLength: 6)
+                    Text(Fmt.relative(hit.message.date)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                }
+                Text(emphasized(hit.snippet(for: query)))
+                    .font(.callout).foregroundStyle(.secondary)
+                    .lineLimit(3)
+            }
+        }
+        .padding(.vertical, 3)
+    }
+
+    private func emphasized(_ snippet: String) -> AttributedString {
+        var out = AttributedString((hit.message.isFromMe ? "You: " : "") + snippet)
+        let q = query.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return out }
+        var search = out.startIndex
+        while search < out.endIndex, let r = out[search...].range(of: q, options: [.caseInsensitive, .diacriticInsensitive]) {
+            out[r].font = .callout.weight(.semibold)
+            out[r].foregroundColor = .primary
+            search = r.upperBound
+        }
+        return out
     }
 }

@@ -24,5 +24,5 @@ echo "harness: store copy at $dst ($(du -sh "$dst" | cut -f1))"
 
 envs=(--env "ALLMAN_STORE=$dst" --env "ALLMAN_BIN=$PWD/scripts/fake-allman.sh")
 for kv in "$@"; do envs+=(--env "$kv"); done
-open "$app" "${envs[@]}"
+open -n "$app" "${envs[@]}"
 echo "harness: launched $app"

@@ -37,8 +37,17 @@ final class InboxModel {
     private(set) var backfilling: Set<String> = []
     var readState: ReadState { didSet { recompute() } }
     var selectedConvId: String? { didSet { recompute() } }
-    var searchText = "" { didSet { recompute() } }
+    var searchText = "" { didSet { recompute(); scheduleMessageSearch() } }
     var filter: Filter = .all { didSet { recompute() } }
+    /// Full-text hits across every stored message for the current search (3+ chars).
+    private(set) var messageHits: [MessageHit] = []
+    private(set) var searchingMessages = false
+    private var searchTask: Task<Void, Never>?
+    /// The message-hit row highlighted in the sidebar, if the selection came from one.
+    private(set) var selectedHitId: String?
+    /// A message the open thread should scroll to and flash. `token` re-fires for repeats.
+    struct ScrollTarget: Equatable { let convId: String; let urn: String; let token: Int }
+    private(set) var scrollTarget: ScrollTarget?
     /// Derived, recomputed only when inputs change — cheap to read from views.
     private(set) var filtered: [ConversationSnapshot] = []
     private(set) var unread: [ConversationSnapshot] = []
@@ -102,6 +111,51 @@ final class InboxModel {
             || (snap.lastMessage?.body.lowercased().contains(q) ?? false)
     }
 
+    var isSearching: Bool { !searchText.trimmingCharacters(in: .whitespaces).isEmpty }
+
+    /// Debounced `grep`-style scan of every thread; runs off the main thread.
+    private func scheduleMessageSearch() {
+        searchTask?.cancel()
+        let q = searchText.trimmingCharacters(in: .whitespaces)
+        guard q.count >= 3, let dir = accountDir else {
+            messageHits = []; searchingMessages = false
+            return
+        }
+        searchingMessages = true
+        let reader = self.reader
+        searchTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(220))
+            guard !Task.isCancelled else { return }
+            let hits = await Task.detached(priority: .userInitiated) {
+                reader.searchMessages(accountDir: dir, query: q, isCancelled: { Task.isCancelled })
+            }.value
+            guard !Task.isCancelled else { return }
+            messageHits = hits
+            searchingMessages = false
+        }
+    }
+
+    /// Open the thread a search hit belongs to and jump to that message.
+    func open(hit: MessageHit) {
+        select(hit.convId)
+        selectedHitId = hit.id
+        scrollTarget = ScrollTarget(convId: hit.convId, urn: hit.message.urn, token: (scrollTarget?.token ?? 0) + 1)
+    }
+
+    /// Sidebar selection: a conversation id or a message-hit id ("msg:…").
+    var sidebarSelection: String? {
+        get { selectedHitId ?? selectedConvId }
+        set {
+            if let id = newValue, id.hasPrefix("msg:") {
+                if let hit = messageHits.first(where: { $0.id == id }) { open(hit: hit) }
+            } else {
+                select(newValue)
+            }
+        }
+    }
+
+    func consumeScrollTarget() { scrollTarget = nil }
+
     var selected: ConversationSnapshot? { selectedConvId.flatMap { byId[$0] } }
     func isUnread(_ snap: ConversationSnapshot) -> Bool { readState.isUnread(snap) }
     func unreadCount(_ snap: ConversationSnapshot) -> Int { readState.unreadCount(snap) }
@@ -114,7 +168,9 @@ final class InboxModel {
         accountDir = account.dir
         watcher?.stop()
         snapshots = []; byId = [:]; messages = [:]
+        messageHits = []; selectedHitId = nil
         await reloadAll()
+        scheduleMessageSearch()
         let w = StoreWatcher(accountDir: account.dir) { [weak self] change in
             guard let self else { return }
             Task { @MainActor in
@@ -281,6 +337,7 @@ final class InboxModel {
 
     func select(_ convId: String?) {
         if convId != nil, draft != nil { draft = nil }
+        selectedHitId = nil
         selectedConvId = convId
         composerError = nil
         guard let convId else { return }

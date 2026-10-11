@@ -12,7 +12,7 @@ struct StoreReader: Sendable {
         self.storeURL = storeURL
     }
 
-    private static let decoder = JSONDecoder()
+    static let decoder = JSONDecoder()
     private static let convIdPrefix = "2-"
     private static let profileIdPrefix = "ACo"
 

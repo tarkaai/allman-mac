@@ -19,6 +19,8 @@ struct ThreadView: View {
     /// never lands). Long threads are capped and extended on demand.
     @State private var visibleLimit = ThreadView.pageSize
     static let pageSize = 300
+    /// A search hit the thread just jumped to; its bubble glows briefly.
+    @State private var highlightedUrn: String?
 
     private enum Row: Identifiable {
         case stamp(Date)
@@ -75,6 +77,7 @@ struct ThreadView: View {
                                     maxWidth: maxBubble,
                                     media: inbox.media[convId] ?? [:],
                                     mediaLoading: inbox.mediaLoading.contains(convId),
+                                    highlighted: highlightedUrn == msg.urn,
                                     onReact: { emoji in Task { await inbox.react(msg, in: convId, emoji: emoji) } },
                                     onReply: { inbox.replyingTo[convId] = msg }
                                 )
@@ -126,6 +129,9 @@ struct ThreadView: View {
                     // Our bubble rises out of the composer and everything above moves up with it.
                     if new > old { slideToBottom(proxy, .spring(duration: 0.4, bounce: 0.1)) }
                 }
+                .onChange(of: inbox.scrollTarget?.token) { _, _ in jumpIfNeeded(proxy, all: allMessages) }
+                .onChange(of: allMessages.isEmpty) { _, empty in if !empty { jumpIfNeeded(proxy, all: allMessages) } }
+                .onAppear { jumpIfNeeded(proxy, all: allMessages) }
                 .overlay {
                     // `messages[convId] == nil` means not read from disk yet — don't flash "no messages".
                     if messages.isEmpty && (inbox.messages[convId] == nil || inbox.loadingThread.contains(convId)) { ProgressView() }
@@ -181,6 +187,31 @@ struct ThreadView: View {
                 try? await Task.sleep(for: .milliseconds(ms))
                 withAnimation(animation) { proxy.scrollTo("bottom", anchor: .bottom) }
             }
+        }
+    }
+
+    /// A search hit was opened: make sure its row is rendered (it may be past the
+    /// visible page), scroll it to the middle, and flash it.
+    private func jumpIfNeeded(_ proxy: ScrollViewProxy, all: [Message]) {
+        let inbox = model.inbox
+        guard let target = inbox.scrollTarget, target.convId == snapshot.record.convId, !all.isEmpty else { return }
+        guard let idx = all.firstIndex(where: { $0.urn == target.urn }) else { return }
+        let hidden = all.count - visibleLimit
+        if idx < hidden {
+            let needed = all.count - idx + 40
+            visibleLimit = ((needed + Self.pageSize - 1) / Self.pageSize) * Self.pageSize
+        }
+        settling = false
+        inbox.consumeScrollTarget()
+        let urn = target.urn
+        Task { @MainActor in
+            for ms in [60, 200, 450] {
+                try? await Task.sleep(for: .milliseconds(ms))
+                withAnimation(.easeOut(duration: 0.3)) { proxy.scrollTo(urn, anchor: .center) }
+            }
+            withAnimation(.easeIn(duration: 0.2)) { highlightedUrn = urn }
+            try? await Task.sleep(for: .seconds(2.2))
+            withAnimation(.easeOut(duration: 0.6)) { if highlightedUrn == urn { highlightedUrn = nil } }
         }
     }
 
@@ -241,6 +272,8 @@ struct MessageRow: View {
     let maxWidth: CGFloat
     var media: [String: URL] = [:]
     var mediaLoading = false
+    /// Briefly true after jumping here from a search result.
+    var highlighted = false
     /// Set for an optimistic bubble: lighter while sending, "Not Delivered" on failure.
     var pending: InboxModel.OutgoingMessage.State? = nil
     let onReact: (String) -> Void
@@ -357,6 +390,11 @@ struct MessageRow: View {
         .padding(.horizontal, 12).padding(.vertical, 7)
         .foregroundStyle(mine ? .white : .primary)
         .background(bubbleColor, in: RoundedRectangle(cornerRadius: BubbleStyle.radius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: BubbleStyle.radius, style: .continuous)
+                .stroke(Color.yellow, lineWidth: highlighted ? 2.5 : 0)
+                .shadow(color: .yellow.opacity(highlighted ? 0.6 : 0), radius: 8)
+        )
     }
 
     private var bubbleColor: Color {

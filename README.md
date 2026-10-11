@@ -21,6 +21,13 @@ checks and git commits all go through the canonical path.
 > Companion repos: [`allman-cli`](https://github.com/tarkaai/allman-cli) (the CLI, which this
 > app embeds) and [`allman-tui`](https://github.com/tarkaai/allman-tui) (the terminal inbox).
 
+## Install
+
+Grab `Allman-<version>-arm64.zip` from the [releases page](https://github.com/tarkaai/allman-mac/releases),
+unzip, move `Allman.app` to /Applications and launch it — it lives in the menu bar. Builds are
+ad-hoc signed and not notarized, so on first launch right-click **Allman.app → Open**. Requires
+macOS 26 on Apple Silicon.
+
 ## Requirements
 
 - macOS 26 (Tahoe) or later — the UI uses Liquid Glass and the macOS 26 SwiftUI APIs.
@@ -39,6 +46,20 @@ scripts/test.sh           # unit tests
 `scripts/build.sh` runs `xcodegen generate` and `xcodebuild`. The post-build phase copies the
 `allman` binary into `Allman.app/Contents/Resources/allman`, so the app is self-contained.
 Builds are ad-hoc signed; for distribution, set `CODE_SIGN_IDENTITY` and a team in `project.yml`.
+
+## Release
+
+```bash
+scripts/release.sh                      # tag v$MARKETING_VERSION, embed latest stable allman-cli
+scripts/release.sh --cli-version v0.4.0 # pin the embedded CLI
+scripts/release.sh --suffix alpha.1     # prerelease
+scripts/release.sh --dry-run            # build + zip only
+```
+
+Bump `MARKETING_VERSION` in `project.yml` first. The script runs the unit tests, downloads the
+CLI's `darwin-arm64` release binary (checksum-verified), builds Release/arm64, checks the embedded
+CLI reports the expected version, zips `dist/Allman-<version>-arm64.zip`, tags `v<version>` and
+publishes a GitHub release. Tags without a suffix are stable.
 
 ## How it works
 

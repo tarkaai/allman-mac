@@ -58,29 +58,23 @@ struct ThreadView: View {
                     .padding(.horizontal, 16).padding(.vertical, 10)
                 }
                 .scrollEdgeEffectStyle(.soft, for: .top)
-                .defaultScrollAnchor(.bottom) // open at the newest message, no scroll-down on load
+                // Bottom-anchored, not scrolled-to: the scroll view is rebuilt once the
+                // thread has content, so its initial offset is the newest message, and
+                // the bottom stays anchored while images and previews grow the content
+                // afterwards. No programmatic scrolling on open at all.
+                .id(messages.isEmpty ? "empty" : "loaded")
+                .defaultScrollAnchor(.bottom)
+                .defaultScrollAnchor(.bottom, for: .sizeChanges)
                 .background(TimeRevealGesture(reveal: $reveal, maxReveal: Self.timeGutter))
                 .onChange(of: messages.count) { old, new in
-                    if old == 0 {
-                        proxy.scrollTo("bottom", anchor: .bottom) // first load: jump, don't animate
-                        // Images and previews finish laying out a beat later; pin the bottom again.
-                        Task { @MainActor in
-                            try? await Task.sleep(for: .milliseconds(350))
-                            proxy.scrollTo("bottom", anchor: .bottom)
-                        }
-                    } else if new > old {
+                    // Someone sent or we received: slide to it. (The first load is handled by the anchor.)
+                    if old > 0, new > old {
                         withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("bottom", anchor: .bottom) }
                     }
                 }
-                .onChange(of: inbox.media[convId]?.count ?? 0) { _, _ in
-                    // Attachments just arrived from `allman media`; keep the newest message in view.
-                    Task { @MainActor in
-                        try? await Task.sleep(for: .milliseconds(250))
-                        proxy.scrollTo("bottom", anchor: .bottom)
-                    }
-                }
                 .overlay {
-                    if messages.isEmpty && inbox.loadingThread.contains(convId) { ProgressView() }
+                    // `messages[convId] == nil` means not read from disk yet — don't flash "no messages".
+                    if messages.isEmpty && (inbox.messages[convId] == nil || inbox.loadingThread.contains(convId)) { ProgressView() }
                     else if messages.isEmpty && !inbox.backfilling.contains(convId) {
                         ContentUnavailableView("No messages stored yet", systemImage: "text.bubble", description: Text("Say hello below, or load the history from LinkedIn."))
                     }

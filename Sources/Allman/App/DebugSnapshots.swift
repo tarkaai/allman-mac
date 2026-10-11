@@ -41,8 +41,24 @@ enum DebugSnapshots {
                 model.inbox.readState.save()
             }
             let target = named ?? rich ?? model.inbox.unread.first ?? model.inbox.snapshots.first
-            model.openInbox(convId: target?.record.convId)
-            try? await Task.sleep(for: .seconds(4))
+            model.openInbox(convId: nil)
+            try? await Task.sleep(for: .seconds(3))
+            if let w = NSApp.windows.first(where: AppDelegate.isInbox) {
+                w.setContentSize(NSSize(width: 1080, height: 700))
+                w.center()
+            }
+            // Cold open of a thread (messages not loaded yet) at a few instants: the
+            // viewport must show the newest message in every frame, never the top.
+            if let conv = target?.record.convId {
+                model.inbox.select(conv)
+                for ms in [120, 350, 800, 1600] {
+                    try? await Task.sleep(for: .milliseconds(ms))
+                    if let w = NSApp.windows.first(where: AppDelegate.isInbox) {
+                        capture(w, to: out.appendingPathComponent("open-\(ms)ms.png"))
+                    }
+                }
+            }
+            try? await Task.sleep(for: .seconds(2))
             if let w = NSApp.windows.first(where: AppDelegate.isInbox) {
                 // Deterministic layout regardless of the restored frame.
                 w.setContentSize(NSSize(width: 1080, height: 700))

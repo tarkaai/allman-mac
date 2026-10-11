@@ -222,11 +222,13 @@ struct PinnedGrid: View {
                 }
                 .buttonStyle(.plain)
                 .help(snap.record.displayName)
-                .contextMenu {
-                    Button("Unpin") { inbox.togglePin(id) }
-                    if inbox.isUnread(snap) { Button("Mark as Read") { inbox.markSeen(id) } }
-                    if let url = snap.record.linkedInProfileURL { Button("Open LinkedIn Profile") { NSWorkspace.shared.open(url) } }
-                }
+                // Not `.contextMenu`: inside a List row it applies to the whole row (every pin).
+                .overlay(RightClickMenu {
+                    var items = [RightClickMenu.Item("Unpin \(snap.record.displayName)") { inbox.togglePin(id) }]
+                    if inbox.isUnread(snap) { items.append(.init("Mark as Read") { inbox.markSeen(id) }) }
+                    if let url = snap.record.linkedInProfileURL { items.append(.init("Open LinkedIn Profile") { NSWorkspace.shared.open(url) }) }
+                    return items
+                })
                 .draggable(id)
                 .dropDestination(for: String.self) { items, _ in
                     guard let dragged = items.first, dragged != id, let to = inbox.pinnedSnapshots.firstIndex(where: { $0.record.convId == id }) else { return false }

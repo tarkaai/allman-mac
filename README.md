@@ -73,6 +73,18 @@ publishes a GitHub release. Tags without a suffix are stable.
   (runs `allman login` for a new profile) and sign out from Settings → Accounts (`allman logout`).
   Read watermarks and pins are kept per account.
 
+## Local harness (no LinkedIn)
+
+```bash
+scripts/harness.sh                                   # app on a throwaway copy of ~/.allman + fake CLI
+scripts/harness.sh ALLMAN_SNAPSHOT_DIR=/tmp/shots ALLMAN_SNAPSHOT_CONV=Jamie \
+    ALLMAN_SNAPSHOT_SEND="hello" FAKE_SEND_DELAY=3   # a fake send, captured every ~100 ms
+```
+
+`scripts/fake-allman.sh` stands in for the CLI (`send` appends to the thread's JSONL after a delay,
+`FAKE_SEND_FAIL=1` makes it fail), so sends, failures and the sending→stored swap can be exercised
+and screenshotted without touching LinkedIn or the real store.
+
 ## How it works
 
 ```

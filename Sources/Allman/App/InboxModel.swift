@@ -193,7 +193,22 @@ final class InboxModel {
         if messages[convId] != msgs { messages[convId] = msgs }
         if media[convId] != files { media[convId] = files }
         loadingThread.remove(convId)
+        reconcileOutgoing(convId, with: msgs)
         ensureMedia(convId, messages: msgs, files: files)
+    }
+
+    /// The CLI writes the sent message to disk before its process exits, and the
+    /// file watcher reloads it. Drop the placeholder the moment its stored copy
+    /// is on screen, so the two never show together.
+    private func reconcileOutgoing(_ convId: String, with msgs: [Message]) {
+        guard let items = outgoing[convId], !items.isEmpty else { return }
+        let keep = items.filter { item in
+            if case .failed = item.state { return true }
+            let since = Int64(item.createdAt.timeIntervalSince1970 * 1000) - 120_000
+            let stored = msgs.contains { $0.isFromMe && $0.timestamp >= since && $0.body.trimmingCharacters(in: .whitespacesAndNewlines) == item.body }
+            return !stored
+        }
+        if keep.count != items.count { withAnimation(nil) { outgoing[convId] = keep } }
     }
 
     private static let downloadable: Set<String> = ["image", "gif", "file", "audio", "voice", "video"]

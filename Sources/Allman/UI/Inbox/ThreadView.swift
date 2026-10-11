@@ -11,6 +11,14 @@ struct ThreadView: View {
     /// the bottom stays pinned without animation. After that, growth from new
     /// messages is scrolled into view *with* animation so the stream slides up.
     @State private var settling = true
+    /// Declarative scroll target: a request made here is applied by SwiftUI after
+    /// the next layout, so scrolling to a row that was just added always lands.
+    @State private var position = ScrollPosition(edge: .bottom)
+    /// Rows are laid out eagerly (a lazy stack only measures rows once they are
+    /// on screen, so scrolling to a row that was just appended below the viewport
+    /// never lands). Long threads are capped and extended on demand.
+    @State private var visibleLimit = ThreadView.pageSize
+    static let pageSize = 300
 
     private enum Row: Identifiable {
         case stamp(Date)
@@ -28,7 +36,9 @@ struct ThreadView: View {
     var body: some View {
         let inbox = model.inbox
         let convId = snapshot.record.convId
-        let messages = inbox.messages[convId] ?? []
+        let allMessages = inbox.messages[convId] ?? []
+        let messages = Array(allMessages.suffix(visibleLimit))
+        let hiddenCount = allMessages.count - messages.count
         let outgoing = inbox.outgoingMessages(convId)
         let rows = rows(for: messages, outgoing: outgoing)
         VStack(spacing: 0) {
@@ -36,7 +46,18 @@ struct ThreadView: View {
             let maxBubble = max(260, (geo.size.width - 32) * 0.6)
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        if hiddenCount > 0 {
+                            HStack {
+                                Spacer()
+                                Button("Show \(min(hiddenCount, Self.pageSize)) earlier message\(min(hiddenCount, Self.pageSize) == 1 ? "" : "s")") {
+                                    visibleLimit += Self.pageSize
+                                }
+                                .buttonStyle(.glass).controlSize(.small)
+                                Spacer()
+                            }
+                            .padding(.vertical, 6)
+                        }
                         if inbox.backfilling.contains(convId) {
                             HStack { Spacer(); ProgressView().controlSize(.small); Text("Loading older history…").font(.caption).foregroundStyle(.secondary); Spacer() }
                                 .padding(.vertical, 6)
@@ -86,6 +107,7 @@ struct ThreadView: View {
                 // the bottom stays anchored while images and previews grow the content
                 // afterwards. No programmatic scrolling on open at all.
                 .id(messages.isEmpty ? "empty" : "loaded")
+                .scrollPosition($position)
                 .defaultScrollAnchor(.bottom)
                 .defaultScrollAnchor(settling ? .bottom : nil, for: .sizeChanges)
                 .background(TimeRevealGesture(reveal: $reveal, maxReveal: Self.timeGutter))
@@ -150,8 +172,15 @@ struct ThreadView: View {
     /// animates (the stream visibly moves up) instead of snapping.
     private func slideToBottom(_ proxy: ScrollViewProxy, _ animation: Animation) {
         settling = false
-        DispatchQueue.main.async {
-            withAnimation(animation) { proxy.scrollTo("bottom", anchor: .bottom) }
+        withAnimation(animation) { position.scrollTo(edge: .bottom) }
+        // The declarative request can resolve against the pre-insertion geometry
+        // (seen in Release builds); re-issue imperatively over the next frames —
+        // once it has landed the extra calls are no-ops.
+        Task { @MainActor in
+            for ms in [30, 90, 200, 450] {
+                try? await Task.sleep(for: .milliseconds(ms))
+                withAnimation(animation) { proxy.scrollTo("bottom", anchor: .bottom) }
+            }
         }
     }
 

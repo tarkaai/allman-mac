@@ -59,6 +59,19 @@ enum DebugSnapshots {
                 }
             }
             try? await Task.sleep(for: .seconds(2))
+            // A *real* send through the CLI, captured as it happens (ALLMAN_SNAPSHOT_SEND=<text>).
+            if let text = ProcessInfo.processInfo.environment["ALLMAN_SNAPSHOT_SEND"], !text.isEmpty, let conv = target?.record.convId {
+                let start = Date()
+                Task { @MainActor in _ = await model.inbox.send(text, to: conv) }
+                // Every 100 ms for 5 s: catches the slide, the overlap, and the swap to solid.
+                for _ in 0..<50 {
+                    try? await Task.sleep(for: .milliseconds(100))
+                    if let w = NSApp.windows.first(where: AppDelegate.isInbox) {
+                        let t = Int(Date().timeIntervalSince(start) * 1000)
+                        capture(w, to: out.appendingPathComponent(String(format: "send-%04dms.png", t)))
+                    }
+                }
+            }
             if ProcessInfo.processInfo.environment["ALLMAN_SNAPSHOT_OUTGOING"] != nil, let conv = target?.record.convId {
                 model.inbox.debugInjectOutgoing(conv)
                 for ms in [60, 160, 300, 900] {

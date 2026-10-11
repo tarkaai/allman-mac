@@ -91,9 +91,9 @@ enum DebugSnapshots {
                 let originalOrganizer = model.inbox.organizer
                 if ProcessInfo.processInfo.environment["ALLMAN_SNAPSHOT_ORGANIZE"] != nil {
                     let rows = model.inbox.snapshots.prefix(8).map(\.record.convId)
-                    let hot = model.inbox.addLabel("Hot lead", color: "red")!
-                    let hiring = model.inbox.addLabel("Hiring", color: "green")!
-                    let ait = model.inbox.addLabel("AI Tinkerers", color: "purple")!
+                    let hot = model.inbox.addLabel("Hot lead", icon: "flame")!
+                    let hiring = model.inbox.addLabel("Hiring", icon: "person.badge.plus")!
+                    let ait = model.inbox.addLabel("AI Tinkerers", icon: "sparkles")!
                     if rows.count >= 6 {
                         model.inbox.toggle(label: hot.id, rows[0]); model.inbox.toggle(label: ait.id, rows[0])
                         model.inbox.toggle(label: hiring.id, rows[1])
@@ -185,23 +185,23 @@ enum DebugSnapshots {
 
             // Insights sheet (ALLMAN_SNAPSHOT_INSIGHTS=1).
             if ProcessInfo.processInfo.environment["ALLMAN_SNAPSHOT_INSIGHTS"] != nil, let w = NSApp.windows.first(where: AppDelegate.isInbox) {
-                NotificationCenter.default.post(name: .allmanInsights, object: nil)
+                model.show(.insights)
                 try? await Task.sleep(for: .seconds(6))
-                if let sheet = w.attachedSheet { capture(sheet, to: out.appendingPathComponent("insights.png")) } else { capture(w, to: out.appendingPathComponent("insights.png")) }
-                w.attachedSheet.map { w.endSheet($0) }
+                capture(w, to: out.appendingPathComponent("insights.png"))
+                model.show(.messenger)
                 try? await Task.sleep(for: .milliseconds(500))
             }
 
             // The Network window (ALLMAN_SNAPSHOT_NETWORK=1), connections loaded from the store copy.
-            if ProcessInfo.processInfo.environment["ALLMAN_SNAPSHOT_NETWORK"] != nil {
-                model.openNetwork()
+            if ProcessInfo.processInfo.environment["ALLMAN_SNAPSHOT_NETWORK"] != nil, let w = NSApp.windows.first(where: AppDelegate.isInbox) {
+                model.show(.network)
                 try? await Task.sleep(for: .seconds(4))
-                if let nw = NSApp.windows.first(where: { AppDelegate.isNetwork($0) && $0.isVisible }) {
-                    nw.setContentSize(NSSize(width: 1000, height: 620)); nw.center()
-                    try? await Task.sleep(for: .seconds(1))
-                    capture(nw, to: out.appendingPathComponent("network.png"))
-                    nw.orderOut(nil)
-                }
+                capture(w, to: out.appendingPathComponent("network.png"))
+                model.show(.settings)
+                try? await Task.sleep(for: .seconds(2))
+                capture(w, to: out.appendingPathComponent("settings-inline.png"))
+                model.show(.messenger)
+                try? await Task.sleep(for: .milliseconds(500))
             }
 
             // The real status-item popover (right-click on the menu bar icon).

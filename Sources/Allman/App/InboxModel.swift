@@ -76,6 +76,8 @@ final class InboxModel {
     private(set) var unreadCount = 0
     /// Pinned conversations in pin order (only those that still exist).
     private(set) var pinnedSnapshots: [ConversationSnapshot] = []
+    /// The pins that belong to the inbox on screen (All, or a label).
+    private(set) var pinnedInView: [ConversationSnapshot] = []
 
     enum FocusTarget { case list, composer, search }
     /// Views observe this to move keyboard focus; bump `focusToken` to re-fire.
@@ -112,8 +114,14 @@ final class InboxModel {
         unread = snapshots.filter { readState.isUnread($0) && !tucked($0) }
         unreadCount = unread.count
         pinnedSnapshots = readState.pins.compactMap { byId[$0] }
-        let pinSet = Set(readState.pins)
-        let browsing = q.isEmpty && filter == .all
+        // Pins belong to an inbox: All shows every pin, a label inbox only its members.
+        pinnedInView = pinnedSnapshots.filter { snap in
+            if case .label(let id) = filter { return organizer.has(label: id, snap.record.convId) }
+            return filter == .all
+        }
+        let pinSet = Set(pinnedInView.map(\.record.convId))
+        let browsing = q.isEmpty && (filter == .all || filter.isLabel)
+        var scores: [String: Int] = [:]
         filtered = snapshots.filter { snap in
             // Pinned threads live in the grid while browsing; searching/filtering shows them in the list.
             if browsing && pinSet.contains(snap.record.convId) && snap.record.convId != selectedConvId { return false }
@@ -128,7 +136,14 @@ final class InboxModel {
             case .archived: if !organizer.isArchived(snap) { return false }
             case .label(let id): if !organizer.has(label: id, snap.record.convId) || organizer.isArchived(snap) { return false }
             }
-            return q.isEmpty || matches(snap, q)
+            if q.isEmpty { return true }
+            let score = rank(snap, q)
+            if score > 0 { scores[snap.record.convId] = score }
+            return score > 0
+        }
+        if !q.isEmpty {
+            // Relevance first (prefix/whole-word over substring), recency as the tiebreak.
+            filtered.sort { (scores[$0.record.convId] ?? 0, $0.activityDate) > (scores[$1.record.convId] ?? 0, $1.activityDate) }
         }
         if case .reminders = filter {
             // Soonest due first; the list is otherwise newest-activity first.
@@ -163,17 +178,17 @@ final class InboxModel {
     }
 
     @discardableResult
-    func addLabel(_ name: String, color: String? = nil, to convId: String? = nil) -> InboxLabel? {
+    func addLabel(_ name: String, icon: String? = nil, to convId: String? = nil) -> InboxLabel? {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return nil }
-        let l = organizer.addLabel(name: trimmed, color: color)
+        let l = organizer.addLabel(name: trimmed, icon: icon)
         if let convId, !organizer.has(label: l.id, convId) { organizer.toggle(label: l.id, convId) }
         organizer.save()
         return l
     }
 
-    func rename(label id: String, to name: String, color: String? = nil) {
-        organizer.rename(label: id, to: name, color: color)
+    func rename(label id: String, to name: String, icon: String? = nil) {
+        organizer.rename(label: id, to: name, icon: icon)
         organizer.save()
     }
 
@@ -261,12 +276,13 @@ final class InboxModel {
         }
     }
 
-    private func matches(_ snap: ConversationSnapshot, _ q: String) -> Bool {
+    private func matches(_ snap: ConversationSnapshot, _ q: String) -> Bool { rank(snap, q) > 0 }
+
+    /// Name outranks handle/headline/company, which outrank the last message.
+    private func rank(_ snap: ConversationSnapshot, _ q: String) -> Int {
         let r = snap.record
-        return r.displayName.lowercased().contains(q)
-            || (r.slug?.lowercased().contains(q) ?? false)
-            || (r.headline?.lowercased().contains(q) ?? false)
-            || (snap.lastMessage?.body.lowercased().contains(q) ?? false)
+        let conn = connection(for: r)
+        return SearchRank.score(name: r.displayName, secondary: [r.slug, r.headline, conn?.company, conn?.title], tertiary: [snap.lastMessage?.body], query: q)
     }
 
     var isSearching: Bool { !searchText.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -474,8 +490,9 @@ final class InboxModel {
 
     /// The rows the arrow keys walk: pinned first (grid order), then the list.
     var navigationOrder: [ConversationSnapshot] {
-        let q = searchText.trimmingCharacters(in: .whitespaces).isEmpty && filter == .all
-        return q ? pinnedSnapshots + filtered.filter { !readState.isPinned($0.record.convId) } : filtered
+        let browsing = searchText.trimmingCharacters(in: .whitespaces).isEmpty && (filter == .all || filter.isLabel)
+        let pinned = Set(pinnedInView.map(\.record.convId))
+        return browsing ? pinnedInView + filtered.filter { !pinned.contains($0.record.convId) } : filtered
     }
 
     func selectNext(unreadOnly: Bool = false) { step(1, unreadOnly: unreadOnly) }

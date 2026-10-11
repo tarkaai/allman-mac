@@ -2,17 +2,21 @@ import Charts
 import SwiftUI
 
 /// Inbox analytics: volume by week, reply rate and speed, who's waiting.
-struct InsightsSheet: View {
+struct InsightsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+    var inline = false
     @State private var insights: Insights?
 
     var body: some View {
+        ScrollView {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text("Insights").font(.title2.weight(.semibold))
+                if inline, let s = model.current { Text("· \(s.displayName)").font(.title3).foregroundStyle(.secondary) }
                 Spacer()
-                Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
+                if !inline { Button("Done") { dismiss() }.keyboardShortcut(.cancelAction) }
+                Button { insights = nil; Task { await load() } } label: { Image(systemName: "arrow.clockwise") }.help("Recompute")
             }
             if let ins = insights {
                 HStack(spacing: 10) {
@@ -43,7 +47,7 @@ struct InsightsSheet: View {
                     VStack(spacing: 2) {
                         ForEach(ins.topContacts) { c in
                             Button {
-                                dismiss()
+                                if inline { model.experience = .messenger } else { dismiss() }
                                 model.inbox.select(c.convId)
                             } label: {
                                 HStack {
@@ -62,13 +66,17 @@ struct InsightsSheet: View {
             }
         }
         .padding(18)
-        .frame(width: 640)
-        .task {
-            guard let dir = model.inbox.accountDir else { return }
-            let reader = model.reader
-            let snaps = model.inbox.snapshots
-            insights = await Task.detached(priority: .userInitiated) { Insights.compute(reader: reader, accountDir: dir, snapshots: snaps) }.value
+        .frame(maxWidth: 720)
+        .frame(maxWidth: .infinity)
         }
+        .task(id: model.currentId) { await load() }
+    }
+
+    private func load() async {
+        guard let dir = model.inbox.accountDir else { return }
+        let reader = model.reader
+        let snaps = model.inbox.snapshots
+        insights = await Task.detached(priority: .userInitiated) { Insights.compute(reader: reader, accountDir: dir, snapshots: snaps) }.value
     }
 
     private func tile(_ title: String, _ value: String, _ detail: String) -> some View {

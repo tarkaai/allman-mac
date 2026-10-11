@@ -11,7 +11,7 @@ final class OrganizerTests: XCTestCase {
     func testLabelsAreManyPerConversationAndDeleteCleansUp() {
         var o = Organizer()
         let hot = o.addLabel(name: "Hot")
-        let hiring = o.addLabel(name: "Hiring", color: "green")
+        let hiring = o.addLabel(name: "Hiring", icon: "person.badge.plus")
         XCTAssertEqual(o.addLabel(name: "hot").id, hot.id, "case-insensitive reuse")
         o.toggle(label: hot.id, "2-A"); o.toggle(label: hiring.id, "2-A"); o.toggle(label: hot.id, "2-B")
         XCTAssertEqual(o.labels(for: "2-A").map(\.name), ["Hot", "Hiring"])
@@ -57,6 +57,15 @@ final class OrganizerTests: XCTestCase {
         let p = Snooze.presets()
         XCTAssertTrue(p.allSatisfy { $0.date > Date() })
         XCTAssertEqual(p.map(\.date), p.map(\.date).sorted())
+    }
+
+    func testLegacyColorLabelsDecodeWithDefaultIcon() throws {
+        let json = #"{"labels":[{"id":"a","name":"Hot","color":"red"}],"labelsByConv":{},"notes":{},"snoozes":{},"archived":{}}"#
+        let o = try JSONDecoder().decode(Organizer.self, from: Data(json.utf8))
+        XCTAssertEqual(o.labels.first?.icon, "tag")
+        var next = Organizer()
+        XCTAssertEqual(next.addLabel(name: "A").icon, "tag")
+        XCTAssertEqual(next.addLabel(name: "B").icon, "star", "new labels rotate through unused icons")
     }
 
     func testRoundTripsThroughJSON() throws {

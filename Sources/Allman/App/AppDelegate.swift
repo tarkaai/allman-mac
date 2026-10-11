@@ -17,9 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let nc = NotificationCenter.default
         observers.append(nc.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { n in
-            guard let w = n.object as? NSWindow else { return }
-            if Self.isNetwork(w) { Task { @MainActor in NSApp.setActivationPolicy(.regular) }; return }
-            guard Self.isInbox(w) else { return }
+            guard let w = n.object as? NSWindow, Self.isInbox(w) else { return }
             Task { @MainActor in
                 NSApp.setActivationPolicy(.regular)
                 let inbox = AppModel.shared.inbox
@@ -40,7 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 AppModel.shared.inbox.isWindowFocused = false
                 // Back to a pure menu bar app once the last inbox window is gone.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    let stillOpen = NSApp.windows.contains { $0 !== w && (Self.isInbox($0) || Self.isNetwork($0)) && $0.isVisible }
+                    let stillOpen = NSApp.windows.contains { $0 !== w && Self.isInbox($0) && $0.isVisible }
                     if !stillOpen { NSApp.setActivationPolicy(.accessory) }
                 }
             }
@@ -83,6 +81,4 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     static func isInbox(_ w: NSWindow) -> Bool {
         w.identifier?.rawValue == "inbox" || w.identifier?.rawValue.hasPrefix("inbox") == true
     }
-
-    static func isNetwork(_ w: NSWindow) -> Bool { w.identifier?.rawValue == "network" }
 }

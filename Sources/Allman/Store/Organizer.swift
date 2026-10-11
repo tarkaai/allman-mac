@@ -8,15 +8,37 @@ import Foundation
 struct InboxLabel: Codable, Hashable, Identifiable {
     var id: String
     var name: String
-    /// One of `InboxLabel.colors`.
-    var color: String
+    /// SF Symbol name, one of `InboxLabel.icons`.
+    var icon: String
 
-    static let colors = ["red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink", "gray"]
+    /// Icons a label can wear. Order is the default rotation for new labels.
+    static let icons = [
+        "tag", "star", "flame", "briefcase", "dollarsign.circle", "person.badge.plus", "graduationcap", "hand.wave",
+        "calendar", "bolt", "heart", "bookmark", "flag", "lightbulb", "megaphone", "cup.and.saucer",
+        "building.2", "airplane", "wrench.and.screwdriver", "books.vertical", "mic", "sparkles", "leaf", "gift",
+    ]
 
-    init(id: String = UUID().uuidString, name: String, color: String) {
+    init(id: String = UUID().uuidString, name: String, icon: String) {
         self.id = id
         self.name = name
-        self.color = color
+        self.icon = icon
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, name, icon, color }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        // Pre-icon files carried a color; keep a stable icon for them.
+        icon = try c.decodeIfPresent(String.self, forKey: .icon) ?? "tag"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(name, forKey: .name)
+        try c.encode(icon, forKey: .icon)
     }
 }
 
@@ -75,19 +97,20 @@ struct Organizer: Codable {
     func has(label id: String, _ convId: String) -> Bool { labelsByConv[convId]?.contains(id) ?? false }
 
     @discardableResult
-    mutating func addLabel(name: String, color: String? = nil) -> InboxLabel {
+    mutating func addLabel(name: String, icon: String? = nil) -> InboxLabel {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         if let existing = labels.first(where: { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) { return existing }
-        let c = color ?? InboxLabel.colors[labels.count % InboxLabel.colors.count]
-        let l = InboxLabel(name: trimmed, color: c)
+        let used = Set(labels.map(\.icon))
+        let next = icon ?? InboxLabel.icons.first { !used.contains($0) } ?? InboxLabel.icons[labels.count % InboxLabel.icons.count]
+        let l = InboxLabel(name: trimmed, icon: next)
         labels.append(l)
         return l
     }
 
-    mutating func rename(label id: String, to name: String, color: String? = nil) {
+    mutating func rename(label id: String, to name: String, icon: String? = nil) {
         guard let i = labels.firstIndex(where: { $0.id == id }) else { return }
         labels[i].name = name.trimmingCharacters(in: .whitespaces)
-        if let color { labels[i].color = color }
+        if let icon { labels[i].icon = icon }
     }
 
     mutating func deleteLabel(_ id: String) {

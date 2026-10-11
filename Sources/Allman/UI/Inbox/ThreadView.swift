@@ -44,6 +44,8 @@ struct ThreadView: View {
         let outgoing = inbox.outgoingMessages(convId)
         let rows = rows(for: messages, outgoing: outgoing)
         VStack(spacing: 0) {
+            PersonHeader(snapshot: snapshot)
+            Divider()
             ReminderBanner(convId: convId)
             GeometryReader { geo in
             let maxBubble = max(260, (geo.size.width - 32) * 0.6)
@@ -148,66 +150,13 @@ struct ThreadView: View {
             ContactInspector(snapshot: snapshot)
                 .inspectorColumnWidth(min: 250, ideal: 300, max: 400)
         }
-        .navigationTitle(snapshot.record.displayName)
-        .navigationSubtitle(subtitle)
+        .navigationTitle("")
         .toolbar {
-            ToolbarItem(placement: .navigation) {
-                AvatarView(url: snapshot.record.avatarURL, name: snapshot.record.displayName, size: 26)
-                    .padding(.trailing, 2)
-            }
-            .sharedBackgroundVisibility(.hidden)
-            ToolbarItemGroup(placement: .primaryAction) {
-                @Bindable var inbox = inbox
-                let labels = inbox.organizer.labels(for: convId)
-                Button { inbox.showLabelPicker.toggle() } label: {
-                    Label(labels.isEmpty ? "Label" : labels.map(\.name).joined(separator: ", "), systemImage: labels.isEmpty ? "tag" : "tag.fill")
-                }
-                .help(labels.isEmpty ? "Add to a label (⇧⌘L or L)" : "Labels: \(labels.map(\.name).joined(separator: ", ")) (⇧⌘L)")
-                .popover(isPresented: $inbox.showLabelPicker, arrowEdge: .bottom) { LabelPicker(convId: convId).environment(model) }
-                Button { inbox.showSnoozePicker.toggle() } label: {
-                    Label("Snooze", systemImage: inbox.organizer.snooze(convId) == nil ? "clock" : "clock.fill")
-                }
-                .help("Snooze or set a reminder (⇧⌘H or H)")
-                .popover(isPresented: $inbox.showSnoozePicker, arrowEdge: .bottom) { SnoozePicker(convId: convId) { inbox.showSnoozePicker = false }.environment(model) }
-                Button { inbox.showNoteEditor.toggle() } label: {
-                    Label("Note", systemImage: inbox.organizer.note(convId).isEmpty ? "note.text" : "note.text.badge.plus")
-                }
-                .help("Private note about this person (⇧⌘N or N)")
-                .popover(isPresented: $inbox.showNoteEditor, arrowEdge: .bottom) { NoteEditor(convId: convId, compact: true).environment(model) }
-                Button { inbox.toggleArchive(convId) } label: {
-                    Label(inbox.isArchived(convId) ? "Unarchive" : "Archive", systemImage: inbox.isArchived(convId) ? "tray.and.arrow.up" : "archivebox")
-                }
-                .help(inbox.isArchived(convId) ? "Put back in the inbox (⌘E)" : "Archive — it comes back when they write (⌘E or E)")
-                Button { inbox.togglePin(convId) } label: {
-                    Label(inbox.isPinned(convId) ? "Unpin" : "Pin", systemImage: inbox.isPinned(convId) ? "pin.fill" : "pin")
-                }
-                .disabled(!inbox.isPinned(convId) && !inbox.canPinMore)
-                .help(inbox.isPinned(convId) ? "Unpin from the top of the sidebar (⇧⌘P)" : "Pin to the top of the sidebar (⇧⌘P)")
-                if snapshot.record.syncState?.fullyBackfilled != true {
-                    Button { inbox.backfill(convId) } label: { Label("Load full history", systemImage: "clock.arrow.circlepath") }
-                        .disabled(inbox.backfilling.contains(convId))
-                        .help("Walk this thread back to its first message")
-                }
-                if let url = snapshot.record.linkedInProfileURL {
-                    Button { NSWorkspace.shared.open(url) } label: { Label("Profile", systemImage: "person.crop.rectangle") }
-                        .help("Open LinkedIn profile")
-                }
-                if let url = snapshot.record.linkedInThreadURL {
-                    Button { NSWorkspace.shared.open(url) } label: { Label("Open on LinkedIn", systemImage: "arrow.up.right.square") }
-                        .help("Open this thread on linkedin.com (⇧⌘O)")
-                }
+            ToolbarItem(placement: .primaryAction) {
                 Button { model.inspectorVisible.toggle() } label: { Label("Contact Details", systemImage: model.inspectorVisible ? "info.circle.fill" : "info.circle") }
                     .help(model.inspectorVisible ? "Hide contact details (⌥⌘I)" : "Show contact details (⌥⌘I)")
             }
         }
-    }
-
-    /// Enriched role line when the connections store has one, else the LinkedIn headline.
-    private var subtitle: String {
-        if let line = model.inbox.connection(for: snapshot.record)?.roleLine { return line }
-        if let h = snapshot.record.headline { return h }
-        if let s = snapshot.record.slug { return "@\(s)" }
-        return ""
     }
 
     /// Scrolls after the new row has been laid out, so the offset change itself
@@ -277,6 +226,46 @@ struct ThreadView: View {
             out.append(.outgoing(o))
         }
         return out
+    }
+}
+
+/// Who you're talking to, on which messenger: name with the LinkedIn mark,
+/// their brief (enriched role or headline) and their location on separate rows.
+struct PersonHeader: View {
+    @Environment(AppModel.self) private var model
+    let snapshot: ConversationSnapshot
+
+    var body: some View {
+        let r = snapshot.record
+        let conn = model.inbox.connection(for: r)
+        let brief = conn.map { [$0.title, $0.company].compactMap { $0 }.joined(separator: " at ") }.flatMap { $0.isEmpty ? nil : $0 } ?? r.headline
+        let location = conn?.location
+        HStack(alignment: .center, spacing: 12) {
+            AvatarView(url: r.avatarURL ?? conn?.profilePictureUrl.flatMap(URL.init(string:)), name: r.displayName, size: 44)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(r.displayName).font(.headline).lineLimit(1)
+                    MessengerBadge()
+                    if let d = degree(r.distance) { Text(d).font(.caption2.weight(.medium)).padding(.horizontal, 5).padding(.vertical, 1).background(.quaternary, in: Capsule()) }
+                }
+                if let brief, !brief.isEmpty { Text(brief).font(.callout).foregroundStyle(.secondary).lineLimit(1) }
+                if let location, !location.isEmpty { Label(location, systemImage: "mappin.and.ellipse").font(.caption).foregroundStyle(.tertiary).lineLimit(1) }
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 16).padding(.vertical, 8)
+        .contentShape(Rectangle())
+        .onTapGesture { model.inspectorVisible.toggle() }
+        .help("Contact details (⌥⌘I)")
+    }
+
+    private func degree(_ d: String?) -> String? {
+        switch d {
+        case "DISTANCE_1": return "1st"
+        case "DISTANCE_2": return "2nd"
+        case "DISTANCE_3": return "3rd"
+        default: return nil
+        }
     }
 }
 

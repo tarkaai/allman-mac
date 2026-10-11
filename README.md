@@ -19,17 +19,33 @@ the local-first LinkedIn messenger CLI. Two jobs:
    `{firstName}`-style placeholders; a contact inspector fed by `allman enrich`;
    and a Network window for your connections, enrichment and connection requests.
 
+## Layout
+
+One window, four experiences, switched from the segmented control at the left of the
+toolbar (or `⌘1`–`⌘4`): **Messenger**, **Network**, **Insights**, **Settings**.
+
+The messenger sidebar, top to bottom: who is signed in (the chevron collapses account
+actions: switch, sync, sync older history, add, sign out, settings); the inbox bar —
+every label is an inbox, shown as icon chips with *All* and *Unread*, plus the filter
+menu, new label, the selected thread's actions and New Message; search; pins for the
+current inbox; the list. Hovering a row reveals pin / labels / snooze / note / archive.
+The thread header is about the person: name with the messenger's mark (LinkedIn today —
+Allman is built for more than one), their brief and their location on separate rows;
+the `i` at the top right opens the contact details inspector.
+
 ## Inbox organization
 
 All of this is app-owned, per account, under `~/Library/Application Support/Allman/`
 (never in the store, so the CLI's git history stays clean):
 
-- **Search** matches names, headlines and the last message as you type; from three
-  characters it also scans every stored message body (what `allman grep` does) and
-  lists hits under *Messages*. Opening a hit jumps the thread to that message.
+- **Search** ranks by relevance: an exact or prefix match on the name first, then a
+  word prefix or initials, then handle / headline / company, then a substring of the
+  last message. From three characters it also scans every stored message body (what
+  `allman grep` does) and lists hits under *Messages*; opening a hit jumps the thread
+  to that message.
 - **Labels** tag a thread with any number of labels (`L` or `⇧⌘L`). Each label is its
-  own inbox: a chip strip above the list switches between them, and the filter menu
-  lists them too. Rename, recolor or delete from a chip's context menu.
+  own inbox, with an SF Symbol icon: the chips in the inbox bar switch between them.
+  Rename, change the icon or delete from a chip's context menu.
 - **Notes** keep context on a person (`N` or `⇧⌘N`), in the inspector or a popover.
 - **Snooze** (`H` or `⇧⌘H`) hides a thread until a time — it comes back early if
   they write. **Remind** keeps it in place and pings you at the time. Due reminders
@@ -52,9 +68,9 @@ All of this is app-owned, per account, under `~/Library/Application Support/Allm
   experience, education and skills from the connections store once `allman enrich`
   has run; *Fetch profile details* runs `allman enrich <slug> --deep` for one person.
 
-## Network window
+## Network
 
-`⌘2` (or the Network button) opens your stored 1st-degree network as a sortable,
+`⌘2` shows your stored 1st-degree network as a sortable,
 searchable table — name, title, company, location, connected date, enrichment —
 with *Message*, *Open profile* and *Fetch details* per row. The toolbar drives the
 CLI's network jobs with live progress: **Pull Connections** (`allman connections`),
@@ -133,8 +149,9 @@ scripts/harness.sh ALLMAN_SNAPSHOT_DIR=/tmp/shots ALLMAN_SNAPSHOT_CONV=Jamie \
 ```
 
 `scripts/fake-allman.sh` stands in for the CLI (`send` appends to the thread's JSONL after a delay,
-`FAKE_SEND_FAIL=1` makes it fail), so sends, failures and the sending→stored swap can be exercised
-and screenshotted without touching LinkedIn or the real store.
+`FAKE_SEND_FAIL=1` makes it fail; `enrich`, `connections` and `connect` are simulated against the
+store copy), so sends, failures and network jobs can be exercised and screenshotted without
+touching LinkedIn or the real store. The Network view says when it is running against the fake CLI.
 
 ## How it works
 
@@ -177,7 +194,7 @@ Settings override → `ALLMAN_BIN` → bundled `Contents/Resources/allman` → `
 | --- | --- |
 | `⌘I` (panel) | Open the inbox |
 | `⌘N` | New message |
-| `⌘2` | Network window |
+| `⌘1` / `⌘2` / `⌘3` / `⌘4` | Messenger / Network / Insights / Settings |
 | `↑` / `↓` or `j` / `k` | Move through the list (when it has focus) |
 | `e` / `h` / `l` / `n` (list) | Archive / snooze / labels / note for the selected thread |
 | `u` / `i` (list) | Toggle unread-only / contact details |
@@ -191,7 +208,6 @@ Settings override → `ALLMAN_BIN` → bundled `Contents/Resources/allman` → `
 | `⇧⌘Z` | Undo the last archive or snooze |
 | `⇧⌘S` | Insert a snippet |
 | `⌥⌘I` | Show or hide contact details |
-| `⇧⌘I` | Insights |
 | `↩` | Send (`⌥↩` for a newline) |
 | `⌘R` | Sync the last day |
 | `⇧⌘R` | Full re-sync of the last 7 days |

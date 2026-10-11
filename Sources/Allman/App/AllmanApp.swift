@@ -32,10 +32,14 @@ struct AllmanApp: App {
             CommandMenu("Inbox") {
                 Button("New Message…") { model.openInbox(convId: nil); NotificationCenter.default.post(name: .allmanCompose, object: nil) }
                     .keyboardShortcut("n", modifiers: .command)
-                Button("Network…") { model.openNetwork() }
+                Button("Messenger") { model.show(.messenger) }
+                    .keyboardShortcut("1", modifiers: .command)
+                Button("Network") { model.show(.network) }
                     .keyboardShortcut("2", modifiers: .command)
-                Button("Insights…") { model.openInbox(convId: nil); NotificationCenter.default.post(name: .allmanInsights, object: nil) }
-                    .keyboardShortcut("i", modifiers: [.command, .shift])
+                Button("Insights") { model.show(.insights) }
+                    .keyboardShortcut("3", modifiers: .command)
+                Button("Settings") { model.show(.settings) }
+                    .keyboardShortcut("4", modifiers: .command)
                 Divider()
                 Button("Sync Now") { model.engine.syncNow(from: "1d") }
                     .keyboardShortcut("r", modifiers: .command)
@@ -104,14 +108,6 @@ struct AllmanApp: App {
                 }
             }
         }
-
-        Window("Network", id: "network") {
-            NetworkWindow()
-                .environment(model)
-        }
-        .defaultSize(width: 980, height: 620)
-        .windowResizability(.contentMinSize)
-        .handlesExternalEvents(matching: ["network"])
 
         Settings {
             SettingsView()

@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Your 1st-degree network as stored by the CLI, with the CLI's network jobs.
-struct NetworkWindow: View {
+struct NetworkView: View {
     @Environment(AppModel.self) private var model
     @State private var query = ""
     @State private var tab: Tab = .connections
@@ -65,7 +65,6 @@ struct NetworkWindow: View {
         } message: {
             Text("Walks your 1st-degree list 100 at a time with a short pause between pages. Existing records are updated in place.")
         }
-        .background(WindowAccessor { w in w.identifier = NSUserInterfaceItemIdentifier("network"); w.tabbingMode = .disallowed })
         .onAppear { inbox.loadConnectionsIfNeeded() }
     }
 
@@ -179,6 +178,8 @@ struct NetworkWindow: View {
                 Label(err, systemImage: "exclamationmark.triangle.fill").font(.callout).foregroundStyle(.orange).lineLimit(2)
             } else if let r = net.lastResult {
                 Label(r, systemImage: "checkmark.circle.fill").font(.callout).foregroundStyle(.green)
+            } else if AllmanBinary.resolve()?.lastPathComponent == "fake-allman.sh" {
+                Label("Running against the fake CLI (harness) — network jobs are simulated.", systemImage: "testtube.2").font(.caption).foregroundStyle(.orange)
             } else {
                 Text("Everything here is the CLI's store: allman connections / enrich / connect write it, and git keeps the history.")
                     .font(.caption).foregroundStyle(.secondary)

@@ -71,5 +71,61 @@ EOF
     ;;
   read|react|media|logout|login) printf '{}\n' ;;
   people) printf '[]\n' ;;
+  connections)
+    # Pretend to page through the list; nothing is written.
+    echo "Fetching connections (page size 100, limit ∞)…" >&2
+    for i in 1 2 3; do sleep 1; echo "Page $i: $((i * 100)) so far…" >&2; done
+    echo "✓ Stored 300 connections." >&2
+    ;;
+  enrich)
+    # `enrich <slug>` stamps that record; bulk mode stamps up to --limit un-enriched records.
+    target=""; limit=3
+    i=0; while [[ $i -lt ${#rest[@]} ]]; do
+      case "${rest[$i]}" in --limit) limit="${rest[$((i+1))]}"; i=$((i+2)) ;; --*) i=$((i+1)) ;; *) target="${rest[$i]}"; i=$((i+1)) ;; esac
+    done
+    python3 - "$acct/connections" "$target" "$limit" <<'EOF2'
+import json, os, sys, time, datetime
+d, target, limit = sys.argv[1], sys.argv[2], int(sys.argv[3])
+now = datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+files = []
+if target:
+    p = os.path.join(d, target)
+    if os.path.islink(p): p = os.path.join(d, os.readlink(p))
+    files = [p] if os.path.isfile(p) else []
+    if not files:
+        files = [os.path.join(d, target + ".json")]
+        if not os.path.isfile(files[0]): print(f"✗ {target}: not found in the store", file=sys.stderr); sys.exit(1)
+else:
+    for n in sorted(os.listdir(d)):
+        p = os.path.join(d, n)
+        if not n.endswith(".json") or os.path.islink(p): continue
+        try: r = json.load(open(p))
+        except Exception: continue
+        if not r.get("enrichedAt"): files.append(p)
+        if len(files) >= limit: break
+for p in files:
+    time.sleep(1)
+    r = json.load(open(p))
+    r.setdefault("title", "Founder"); r.setdefault("company", "Fake Co"); r.setdefault("location", "Seattle, Washington, United States")
+    r["about"] = r.get("about") or "Enriched by the harness."; r["enrichedAt"] = now; r["enrichDepth"] = "deep"
+    json.dump(r, open(p, "w"), indent=2)
+    print(json.dumps({"flagshipId": r.get("flagshipId"), "title": r["title"], "company": r["company"], "enrichDepth": "deep"}))
+print(f"Enriched {len(files)}, skipped 0, 0 failed.", file=sys.stderr)
+EOF2
+    ;;
+  connect)
+    target="${rest[0]}"; note=""
+    i=1; while [[ $i -lt ${#rest[@]} ]]; do case "${rest[$i]}" in --note) note="${rest[$((i+1))]}"; i=$((i+2)) ;; *) i=$((i+1)) ;; esac; done
+    sleep 1
+    mkdir -p "$acct/invitations"
+    python3 - "$acct/invitations" "$target" "$note" <<'EOF2'
+import json, sys, datetime
+d, slug, note = sys.argv[1:]
+now = datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+inv = {"inviteeId": "fake-" + slug, "inviteeUrn": "urn:li:fsd_profile:fake-" + slug, "publicIdentifier": slug, "note": note or None, "invitationUrn": "urn:li:fsd_invitation:fake", "sentAt": now}
+json.dump(inv, open(f"{d}/fake-{slug}.json", "w"), indent=2)
+print(json.dumps({"invitationUrn": inv["invitationUrn"], "inviteeUrn": inv["inviteeUrn"], "note": inv["note"]}))
+EOF2
+    ;;
   *) echo "fake-allman: unhandled command $cmd" >&2; exit 1 ;;
 esac

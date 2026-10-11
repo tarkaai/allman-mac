@@ -1,61 +1,31 @@
 import AppKit
 import SwiftUI
 
+/// The one main window. A switcher on the left of the toolbar picks the
+/// experience: Messenger (default), Network, Insights or Settings.
 struct InboxWindow: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.openWindow) private var openWindow
     @State private var composing = false
     @State private var choosingSyncWindow = false
-    @State private var showingInsights = false
 
     var body: some View {
         @Bindable var inbox = model.inbox
-        NavigationSplitView {
-            ConversationListView()
-                .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 420)
-        } detail: {
-            if let draft = inbox.draft {
-                DraftThreadView(recipient: draft)
-                    .id(draft.convId)
-            } else if let snap = inbox.selected {
-                ThreadView(snapshot: snap)
-                    .id(snap.record.convId)
-            } else if inbox.isLoading {
-                ProgressView("Loading conversations…")
-            } else if inbox.snapshots.isEmpty {
-                ContentUnavailableView {
-                    Label("No conversations yet", systemImage: "tray")
-                } description: {
-                    Text(model.engine.status == .needsLogin ? "Sign in from the menu bar to start syncing." : "The first sync will fill this in.")
-                } actions: {
-                    if model.engine.status == .needsLogin { Button("Sign in to LinkedIn") { model.engine.login() } }
-                }
-            } else {
-                ContentUnavailableView("Select a conversation", systemImage: "bubble.left.and.bubble.right", description: Text("\(inbox.snapshots.count) conversations · \(inbox.unreadCount) unread"))
-            }
-        }
-        .navigationTitle("Inbox")
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    model.engine.syncNow(from: "1d")
-                } label: { Label("Sync Now", systemImage: "arrow.clockwise") }
-                    .disabled(model.engine.isSyncing)
-                    .help("Sync the last day from LinkedIn (⌘R)")
-                Button { model.openNetwork() } label: { Label("Network", systemImage: "person.2") }
-                    .help("Your connections, profile enrichment and connection requests (⌘2)")
-                Button { showingInsights = true } label: { Label("Insights", systemImage: "chart.bar.xaxis") }
-                    .help("Volume, reply rate and speed, who's waiting (⇧⌘I)")
+        Group {
+            switch model.experience {
+            case .messenger: messenger
+            case .network: NetworkView().toolbar { switcher }
+            case .insights: InsightsView(inline: true).toolbar { switcher }
+            case .settings:
+                ScrollView { SettingsView().frame(maxWidth: .infinity) }
+                    .toolbar { switcher }
+                    .navigationTitle("Settings")
             }
         }
         .sheet(isPresented: $composing) { ComposeSheet().environment(model) }
-        .onAppear { model.openNetworkWindow = { openWindow(id: "network") } }
-        .onReceive(NotificationCenter.default.publisher(for: .allmanCompose)) { _ in composing = true }
+        .onReceive(NotificationCenter.default.publisher(for: .allmanCompose)) { _ in model.experience = .messenger; composing = true }
         .onReceive(NotificationCenter.default.publisher(for: .allmanSyncWindow)) { _ in choosingSyncWindow = true }
         .sheet(isPresented: $choosingSyncWindow) { SyncWindowSheet().environment(model) }
-        .onReceive(NotificationCenter.default.publisher(for: .allmanInsights)) { _ in showingInsights = true }
-        .sheet(isPresented: $showingInsights) { InsightsSheet().environment(model) }
-        .frame(minWidth: 820, minHeight: 520)
+        .frame(minWidth: 860, minHeight: 540)
         .background(WindowAccessor { window in
             window.identifier = NSUserInterfaceItemIdentifier("inbox")
             window.tabbingMode = .disallowed
@@ -82,12 +52,63 @@ struct InboxWindow: View {
         }
         .animation(.default, value: inbox.toast)
     }
+
+    private var messenger: some View {
+        @Bindable var inbox = model.inbox
+        return NavigationSplitView {
+            ConversationListView()
+                .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 460)
+                .toolbar { switcher }
+        } detail: {
+            if let draft = inbox.draft {
+                DraftThreadView(recipient: draft)
+                    .id(draft.convId)
+            } else if let snap = inbox.selected {
+                ThreadView(snapshot: snap)
+                    .id(snap.record.convId)
+            } else if inbox.isLoading {
+                ProgressView("Loading conversations…")
+            } else if inbox.snapshots.isEmpty {
+                ContentUnavailableView {
+                    Label("No conversations yet", systemImage: "tray")
+                } description: {
+                    Text(model.engine.status == .needsLogin ? "Sign in from the menu bar to start syncing." : "The first sync will fill this in.")
+                } actions: {
+                    if model.engine.status == .needsLogin { Button("Sign in to LinkedIn") { model.engine.login() } }
+                }
+            } else {
+                ContentUnavailableView("Select a conversation", systemImage: "bubble.left.and.bubble.right", description: Text("\(inbox.snapshots.count) conversations · \(inbox.unreadCount) unread"))
+            }
+        }
+        .navigationTitle("")
+    }
+
+    private var switcher: some ToolbarContent {
+        ToolbarItem(placement: .navigation) { ExperienceSwitcher() }
+    }
+}
+
+/// Messenger · Network · Insights · Settings, as an icon segmented control.
+struct ExperienceSwitcher: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        @Bindable var model = model
+        Picker("Experience", selection: $model.experience) {
+            ForEach(AppModel.Experience.allCases) { e in
+                Image(systemName: e.symbol).help(e.title).tag(e)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
+        .help("Messenger ⌘1 · Network ⌘2 · Insights ⌘3 · Settings ⌘4")
+    }
 }
 
 extension Notification.Name {
     static let allmanCompose = Notification.Name("sh.allman.mac.compose")
     static let allmanSyncWindow = Notification.Name("sh.allman.mac.syncWindow")
-    static let allmanInsights = Notification.Name("sh.allman.mac.insights")
 }
 
 /// Grabs the hosting NSWindow so we can tag it and tweak it.

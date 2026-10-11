@@ -40,11 +40,25 @@ final class AppModel {
     /// Set by the AppKit controllers so model code can open windows.
     var openInboxWindow: (() -> Void)?
     var openSettingsWindow: (() -> Void)?
-    /// SwiftUI's openWindow(id:) bridged from a live view; the URL scheme is only a fallback.
-    var openNetworkWindow: (() -> Void)?
     var closePanel: (() -> Void)?
     /// Dev snapshots only: show every bubble's timestamp as if hovered.
     var debugShowTimes = false
+    /// Which experience the main window shows. Messenger is the default.
+    enum Experience: String, CaseIterable, Identifiable {
+        case messenger, network, insights, settings
+        var id: String { rawValue }
+        var title: String { rawValue.capitalized }
+        var symbol: String {
+            switch self {
+            case .messenger: return "bubble.left.and.bubble.right"
+            case .network: return "person.2"
+            case .insights: return "chart.bar.xaxis"
+            case .settings: return "gearshape"
+            }
+        }
+    }
+    var experience: Experience = .messenger
+
     /// The contact inspector beside the thread (⌥⌘I). Remembered across launches.
     static let inspectorKey = "inspectorVisible"
     var inspectorVisible: Bool = UserDefaults.standard.bool(forKey: AppModel.inspectorKey) {
@@ -299,7 +313,7 @@ final class AppModel {
 
     func openInbox(accountId: String?, convId: String?) {
         if let accountId { select(accountId: accountId) }
-        if let convId { inbox.select(convId) }
+        if let convId { experience = .messenger; inbox.select(convId) }
         closePanel?()
         NSApp.activate(ignoringOtherApps: true)
         openInboxWindow?()
@@ -339,12 +353,15 @@ final class AppModel {
         catch { inbox.toast = "Export failed: \(error.localizedDescription)" }
     }
 
-    func openNetwork() {
+    /// Show an experience in the main window (opening it if needed).
+    func show(_ experience: Experience) {
+        self.experience = experience
         closePanel?()
         NSApp.activate(ignoringOtherApps: true)
-        if let w = NSApp.windows.first(where: { $0.identifier?.rawValue == "network" && $0.isVisible }) { w.makeKeyAndOrderFront(nil); return }
-        if let open = openNetworkWindow { open() } else { NSWorkspace.shared.open(URL(string: "allman://network")!) }
+        openInboxWindow?()
     }
+
+    func openNetwork() { show(.network) }
 
     // MARK: Notifications
 

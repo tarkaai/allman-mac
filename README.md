@@ -55,6 +55,9 @@ Sources/Allman/
 - **Reads** come straight from `$HOME/.allman` (or `ALLMAN_STORE`): every `RECORD.json` plus the
   newest JSONL line per conversation at launch, full threads on demand. An FSEvents watcher on
   the account directory reloads whatever changed — including writes from the CLI or TUI in a terminal.
+- **Media** (images, files, voice notes, video) is downloaded by `allman media <conv> --json` when a
+  thread opens and rendered from `{conv}/media/` on disk: images inline (click to open in Preview), files as
+  openable chips, voice notes with a player, video with AVKit. The app never fetches LinkedIn's CDN itself.
 - **Writes** are `allman send … --json` (with `--reply-to` for quoted replies), `allman react … --json`,
   `allman read <target> --json` (when you open a thread, so linkedin.com matches), `allman sync <conv> --json`
   (history backfill on first open, and a small re-pull so reactions changed elsewhere show up), and

@@ -28,6 +28,9 @@ final class InboxModel {
     private(set) var snapshots: [ConversationSnapshot] = []
     private(set) var byId: [String: ConversationSnapshot] = [:]
     private(set) var messages: [String: [Message]] = [:]
+    /// Downloaded attachments per conversation (see StoreReader.mediaFiles).
+    private(set) var media: [String: [String: URL]] = [:]
+    private(set) var mediaLoading: Set<String> = []
     private(set) var isLoading = false
     private(set) var loadingThread: Set<String> = []
     private(set) var backfilling: Set<String> = []
@@ -178,9 +181,39 @@ final class InboxModel {
         if !force, messages[convId] != nil { return }
         loadingThread.insert(convId)
         let reader = self.reader
-        let msgs = await Task.detached(priority: .userInitiated) { reader.readMessages(accountDir: dir, convId: convId) }.value
+        let (msgs, files) = await Task.detached(priority: .userInitiated) {
+            (reader.readMessages(accountDir: dir, convId: convId), reader.mediaFiles(accountDir: dir, convId: convId))
+        }.value
         messages[convId] = msgs
+        media[convId] = files
         loadingThread.remove(convId)
+        ensureMedia(convId, messages: msgs, files: files)
+    }
+
+    private static let downloadable: Set<String> = ["image", "gif", "file", "audio", "voice", "video"]
+    private var mediaFetched: Set<String> = []
+
+    /// `allman media <conv>` when any attachment lacks a local file. Once per thread per session.
+    private func ensureMedia(_ convId: String, messages: [Message], files: [String: URL]) {
+        guard let ctx = context, let dir = accountDir, !mediaFetched.contains(convId) else { return }
+        let missing = messages.contains { m in
+            m.attachments.enumerated().contains { i, a in
+                Self.downloadable.contains(a.type ?? "") && files[StoreReader.mediaKey(messageUrn: m.urn, index: i)] == nil
+            }
+        }
+        guard missing else { return }
+        mediaFetched.insert(convId)
+        mediaLoading.insert(convId)
+        let reader = self.reader
+        Task { @MainActor in
+            defer { mediaLoading.remove(convId) }
+            _ = try? await AllmanRunner.runWithRetry(["media", convId, "--json", "--limit", "200"], context: ctx, timeout: 300, attempts: 2)
+            media[convId] = await Task.detached { reader.mediaFiles(accountDir: dir, convId: convId) }.value
+        }
+    }
+
+    func mediaURL(convId: String, message: Message, index: Int) -> URL? {
+        media[convId]?[StoreReader.mediaKey(messageUrn: message.urn, index: index)]
     }
 
     // MARK: Pins

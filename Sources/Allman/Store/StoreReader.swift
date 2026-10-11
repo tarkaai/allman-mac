@@ -114,6 +114,19 @@ struct StoreReader: Sendable {
         return (nil, [])
     }
 
+    // MARK: Media
+
+    /// Files `allman media` downloaded for a thread, keyed "<bareMessageId>-<attachmentIndex>".
+    func mediaFiles(accountDir: URL, convId: String) -> [String: URL] {
+        let dir = accountDir.appendingPathComponent(convId).appendingPathComponent("media")
+        guard let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { return [:] }
+        var out: [String: URL] = [:]
+        for f in files { out[f.deletingPathExtension().lastPathComponent] = f }
+        return out
+    }
+
+    static func mediaKey(messageUrn: String, index: Int) -> String { "\(bareMessageId(messageUrn))-\(index)" }
+
     // MARK: Messages
 
     private func messageFiles(accountDir: URL, convId: String) -> [URL] {

@@ -45,6 +45,8 @@ struct ThreadView: View {
                                     showsTail: tail,
                                     reveal: model.debugShowTimes ? Self.timeGutter : reveal,
                                     maxWidth: maxBubble,
+                                    media: inbox.media[convId] ?? [:],
+                                    mediaLoading: inbox.mediaLoading.contains(convId),
                                     onReact: { emoji in Task { await inbox.react(msg, in: convId, emoji: emoji) } },
                                     onReply: { inbox.replyingTo[convId] = msg }
                                 )
@@ -61,8 +63,20 @@ struct ThreadView: View {
                 .onChange(of: messages.count) { old, new in
                     if old == 0 {
                         proxy.scrollTo("bottom", anchor: .bottom) // first load: jump, don't animate
+                        // Images and previews finish laying out a beat later; pin the bottom again.
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(350))
+                            proxy.scrollTo("bottom", anchor: .bottom)
+                        }
                     } else if new > old {
                         withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("bottom", anchor: .bottom) }
+                    }
+                }
+                .onChange(of: inbox.media[convId]?.count ?? 0) { _, _ in
+                    // Attachments just arrived from `allman media`; keep the newest message in view.
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(250))
+                        proxy.scrollTo("bottom", anchor: .bottom)
                     }
                 }
                 .overlay {
@@ -153,6 +167,8 @@ struct MessageRow: View {
     let showsTail: Bool
     let reveal: CGFloat
     let maxWidth: CGFloat
+    var media: [String: URL] = [:]
+    var mediaLoading = false
     let onReact: (String) -> Void
     let onReply: () -> Void
 
@@ -226,11 +242,16 @@ struct MessageRow: View {
                     .tint(mine ? .white : Color(nsColor: .linkColor))
                     .fixedSize(horizontal: false, vertical: true)
             }
-            ForEach(Array(message.attachments.enumerated()), id: \.offset) { _, a in
+            ForEach(Array(message.attachments.enumerated()), id: \.offset) { i, a in
                 if a.type == "link_preview" || a.type == "post_share" {
                     LinkPreviewCard(attachment: a, onBlue: mine)
                 } else if a.type != "replied" {
-                    AttachmentChip(attachment: a, onBlue: mine)
+                    AttachmentView(
+                        attachment: a,
+                        fileURL: media[StoreReader.mediaKey(messageUrn: message.urn, index: i)],
+                        loading: mediaLoading,
+                        onBlue: mine
+                    )
                 }
             }
         }

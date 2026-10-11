@@ -19,7 +19,7 @@ final class AccountSession: Identifiable {
     init(account: Account, reader: StoreReader, storeURL: URL) {
         id = account.profileId
         self.account = account
-        inbox = InboxModel(reader: reader, readState: ReadState.load(accountId: account.profileId))
+        inbox = InboxModel(reader: reader, readState: ReadState.load(accountId: account.profileId), organizer: Organizer.load(accountId: account.profileId))
         context = AllmanRunner.Context(storeURL: storeURL, account: account.slug)
     }
 

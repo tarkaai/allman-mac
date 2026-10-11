@@ -92,6 +92,23 @@ enum Fmt {
     }()
     static func monthDayYear(_ date: Date) -> String { monthDayYearFormatter.string(from: date) }
 
+    /// "9:00 AM" today, "Tomorrow 9:00 AM", "Mon 9:00 AM" within the week, else "Oct 20, 9:00 AM".
+    static func reminderTime(_ date: Date, now: Date = Date()) -> String {
+        let cal = Calendar.current
+        let time = clockTime(date)
+        if cal.isDate(date, inSameDayAs: now) { return time }
+        if let t = cal.date(byAdding: .day, value: 1, to: now), cal.isDate(date, inSameDayAs: t) { return "Tomorrow \(time)" }
+        let f = DateFormatter()
+        if let week = cal.date(byAdding: .day, value: 6, to: cal.startOfDay(for: now)), date < week, date > now {
+            f.dateFormat = "EEE"
+        } else if cal.isDate(date, equalTo: now, toGranularity: .year) {
+            f.dateFormat = "MMM d"
+        } else {
+            f.dateFormat = "MMM d, yyyy"
+        }
+        return "\(f.string(from: date)) \(time)"
+    }
+
     static func initials(_ name: String) -> String {
         let tokens = name.split(separator: " ").map(String.init)
         let candidates = tokens.enumerated().compactMap { i, raw -> String? in

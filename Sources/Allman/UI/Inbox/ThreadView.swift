@@ -44,6 +44,7 @@ struct ThreadView: View {
         let outgoing = inbox.outgoingMessages(convId)
         let rows = rows(for: messages, outgoing: outgoing)
         VStack(spacing: 0) {
+            ReminderBanner(convId: convId)
             GeometryReader { geo in
             let maxBubble = max(260, (geo.size.width - 32) * 0.6)
             ScrollViewReader { proxy in
@@ -156,6 +157,27 @@ struct ThreadView: View {
             }
             .sharedBackgroundVisibility(.hidden)
             ToolbarItemGroup(placement: .primaryAction) {
+                @Bindable var inbox = inbox
+                let labels = inbox.organizer.labels(for: convId)
+                Button { inbox.showLabelPicker.toggle() } label: {
+                    Label(labels.isEmpty ? "Label" : labels.map(\.name).joined(separator: ", "), systemImage: labels.isEmpty ? "tag" : "tag.fill")
+                }
+                .help(labels.isEmpty ? "Add to a label (⇧⌘L or L)" : "Labels: \(labels.map(\.name).joined(separator: ", ")) (⇧⌘L)")
+                .popover(isPresented: $inbox.showLabelPicker, arrowEdge: .bottom) { LabelPicker(convId: convId).environment(model) }
+                Button { inbox.showSnoozePicker.toggle() } label: {
+                    Label("Snooze", systemImage: inbox.organizer.snooze(convId) == nil ? "clock" : "clock.fill")
+                }
+                .help("Snooze or set a reminder (⇧⌘H or H)")
+                .popover(isPresented: $inbox.showSnoozePicker, arrowEdge: .bottom) { SnoozePicker(convId: convId) { inbox.showSnoozePicker = false }.environment(model) }
+                Button { inbox.showNoteEditor.toggle() } label: {
+                    Label("Note", systemImage: inbox.organizer.note(convId).isEmpty ? "note.text" : "note.text.badge.plus")
+                }
+                .help("Private note about this person (⇧⌘N or N)")
+                .popover(isPresented: $inbox.showNoteEditor, arrowEdge: .bottom) { NoteEditor(convId: convId, compact: true).environment(model) }
+                Button { inbox.toggleArchive(convId) } label: {
+                    Label(inbox.isArchived(convId) ? "Unarchive" : "Archive", systemImage: inbox.isArchived(convId) ? "tray.and.arrow.up" : "archivebox")
+                }
+                .help(inbox.isArchived(convId) ? "Put back in the inbox (⌘E)" : "Archive — it comes back when they write (⌘E or E)")
                 Button { inbox.togglePin(convId) } label: {
                     Label(inbox.isPinned(convId) ? "Unpin" : "Pin", systemImage: inbox.isPinned(convId) ? "pin.fill" : "pin")
                 }

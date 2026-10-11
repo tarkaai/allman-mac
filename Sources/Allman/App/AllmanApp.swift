@@ -51,6 +51,24 @@ struct AllmanApp: App {
                 .disabled(model.inbox.selectedConvId == nil)
                 .keyboardShortcut("p", modifiers: [.command, .shift])
                 Divider()
+                Button("Labels…") { model.inbox.showLabelPicker = true }
+                    .disabled(model.inbox.selectedConvId == nil)
+                    .keyboardShortcut("l", modifiers: [.command, .shift])
+                Button("Snooze / Remind…") { model.inbox.showSnoozePicker = true }
+                    .disabled(model.inbox.selectedConvId == nil)
+                    .keyboardShortcut("h", modifiers: [.command, .shift])
+                Button("Note…") { model.inbox.showNoteEditor = true }
+                    .disabled(model.inbox.selectedConvId == nil)
+                    .keyboardShortcut("n", modifiers: [.command, .shift])
+                Button(model.inbox.selectedConvId.map { model.inbox.isArchived($0) } == true ? "Unarchive" : "Archive") {
+                    if let id = model.inbox.selectedConvId { model.inbox.toggleArchive(id) }
+                }
+                .disabled(model.inbox.selectedConvId == nil)
+                .keyboardShortcut("e", modifiers: .command)
+                Button("Undo Last Change") { model.inbox.undo?.action(); model.inbox.undo = nil; model.inbox.toast = nil }
+                    .disabled(model.inbox.undo == nil)
+                    .keyboardShortcut("z", modifiers: [.command, .shift])
+                Divider()
                 Button("Mark All as Read") { model.inbox.markAllSeen() }
                     .keyboardShortcut("k", modifiers: [.command, .shift])
                 Button("Show Unread Only") { model.inbox.filter = model.inbox.filter == .unread ? .all : .unread }

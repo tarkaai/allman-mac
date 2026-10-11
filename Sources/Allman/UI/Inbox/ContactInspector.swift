@@ -15,6 +15,7 @@ struct ContactInspector: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header(r, conn)
+                organize(r.convId)
                 if let conn, conn.isEnriched {
                     enrichedDetails(conn)
                 } else {
@@ -52,6 +53,43 @@ struct ContactInspector: View {
             }
             if let ind = conn?.industry { Label(ind, systemImage: "building.2").font(.caption).foregroundStyle(.secondary) }
             if let c = conn?.connectedAt { Label("Connected \(Fmt.monthDayYear(c))", systemImage: "person.2").font(.caption).foregroundStyle(.secondary) }
+        }
+    }
+
+    /// The app's own context: labels, note, snooze/reminder.
+    private func organize(_ convId: String) -> some View {
+        let inbox = model.inbox
+        let labels = inbox.organizer.labels(for: convId)
+        return VStack(alignment: .leading, spacing: 14) {
+            section("Labels") {
+                HStack(spacing: 4) {
+                    FlowLayout(spacing: 4) {
+                        ForEach(labels) { l in
+                            LabelChip(label: l).contextMenu {
+                                Button("Remove") { inbox.toggle(label: l.id, convId) }
+                                Divider()
+                                LabelMenu(label: l)
+                            }
+                        }
+                        Button { inbox.showLabelPicker = true } label: {
+                            Image(systemName: "plus").font(.caption.weight(.semibold)).frame(width: 20, height: 20).background(Color.primary.opacity(0.06), in: Circle())
+                        }
+                        .buttonStyle(.plain).help("Add label (L)")
+                    }
+                }
+            }
+            section("Note") { NoteEditor(convId: convId) }
+            if let s = inbox.organizer.snooze(convId) {
+                section(s.hidden ? "Snoozed" : "Reminder") {
+                    HStack(spacing: 6) {
+                        Image(systemName: s.until <= Date() ? "bell.badge.fill" : "clock").foregroundStyle(.orange)
+                        Text(Fmt.reminderTime(s.until)).font(.callout)
+                        Spacer()
+                        Button("Clear") { inbox.clearSnooze(convId) }.buttonStyle(.link).font(.caption)
+                    }
+                    if let n = s.note, !n.isEmpty { Text(n).font(.caption).foregroundStyle(.secondary) }
+                }
+            }
         }
     }
 
@@ -162,5 +200,34 @@ struct ContactInspector: View {
     private func pronoun(_ p: String?) -> String? {
         guard let p, !p.isEmpty else { return nil }
         return p.lowercased().split(separator: "_").joined(separator: "/")
+    }
+}
+
+
+/// Wraps chips onto new lines.
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 4
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? 300
+        var x: CGFloat = 0, y: CGFloat = 0, rowH: CGFloat = 0
+        for v in subviews {
+            let s = v.sizeThatFits(.unspecified)
+            if x + s.width > width, x > 0 { x = 0; y += rowH + spacing; rowH = 0 }
+            x += s.width + spacing
+            rowH = max(rowH, s.height)
+        }
+        return CGSize(width: width, height: y + rowH)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX, y = bounds.minY, rowH: CGFloat = 0
+        for v in subviews {
+            let s = v.sizeThatFits(.unspecified)
+            if x + s.width > bounds.maxX, x > bounds.minX { x = bounds.minX; y += rowH + spacing; rowH = 0 }
+            v.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(s))
+            x += s.width + spacing
+            rowH = max(rowH, s.height)
+        }
     }
 }

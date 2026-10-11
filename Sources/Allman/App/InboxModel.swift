@@ -8,13 +8,29 @@ import SwiftUI
 @MainActor
 @Observable
 final class InboxModel {
-    enum Filter: String, CaseIterable, Identifiable {
-        case all = "All"
-        case unread = "Unread"
-        case needsReply = "Needs my reply"
-        case awaitingReply = "Awaiting their reply"
-        case firstDegree = "1st-degree connections"
-        var id: String { rawValue }
+    /// Which inbox the sidebar shows. Every label is its own inbox; a thread can be in several.
+    enum Filter: Hashable, Identifiable {
+        case all, unread, needsReply, awaitingReply, firstDegree, reminders, archived
+        case label(String)
+
+        static let builtIn: [Filter] = [.all, .unread, .needsReply, .awaitingReply, .firstDegree]
+        var id: String {
+            if case .label(let l) = self { return "label:\(l)" }
+            return symbol
+        }
+        var rawValue: String { title }
+        var title: String {
+            switch self {
+            case .all: return "All"
+            case .unread: return "Unread"
+            case .needsReply: return "Needs my reply"
+            case .awaitingReply: return "Awaiting their reply"
+            case .firstDegree: return "1st-degree connections"
+            case .reminders: return "Snoozed & reminders"
+            case .archived: return "Archived"
+            case .label: return "Label"
+            }
+        }
         var symbol: String {
             switch self {
             case .all: return "tray.full"
@@ -22,8 +38,12 @@ final class InboxModel {
             case .needsReply: return "arrowshape.turn.up.left"
             case .awaitingReply: return "paperplane"
             case .firstDegree: return "person.2"
+            case .reminders: return "clock.badge"
+            case .archived: return "archivebox"
+            case .label: return "tag"
             }
         }
+        var isLabel: Bool { if case .label = self { return true } else { return false } }
     }
 
     private(set) var snapshots: [ConversationSnapshot] = []
@@ -36,6 +56,8 @@ final class InboxModel {
     private(set) var loadingThread: Set<String> = []
     private(set) var backfilling: Set<String> = []
     var readState: ReadState { didSet { recompute() } }
+    /// Labels, notes, snoozes, archive — app-owned, per account.
+    var organizer: Organizer { didSet { recompute() } }
     var selectedConvId: String? { didSet { recompute() } }
     var searchText = "" { didSet { recompute(); scheduleMessageSearch() } }
     var filter: Filter = .all { didSet { recompute() } }
@@ -74,16 +96,20 @@ final class InboxModel {
     private var backfilled: Set<String> = []
     private var reloadGeneration = 0
 
-    init(reader: StoreReader, readState: ReadState = ReadState.load()) {
+    init(reader: StoreReader, readState: ReadState = ReadState.load(), organizer: Organizer = Organizer()) {
         self.reader = reader
         self.readState = readState
+        self.organizer = organizer
     }
 
     // MARK: Derived
 
     private func recompute() {
         let q = searchText.trimmingCharacters(in: .whitespaces).lowercased()
-        unread = snapshots.filter { readState.isUnread($0) }
+        let now = Date()
+        // Archived and snoozed threads are out of the way everywhere except their own views and search.
+        let tucked: (ConversationSnapshot) -> Bool = { [organizer] in organizer.isArchived($0) || organizer.isSnoozed($0, now: now) }
+        unread = snapshots.filter { readState.isUnread($0) && !tucked($0) }
         unreadCount = unread.count
         pinnedSnapshots = readState.pins.compactMap { byId[$0] }
         let pinSet = Set(readState.pins)
@@ -93,13 +119,144 @@ final class InboxModel {
             if browsing && pinSet.contains(snap.record.convId) && snap.record.convId != selectedConvId { return false }
             if snap.record.convId == selectedConvId { return q.isEmpty || matches(snap, q) }
             switch filter {
-            case .all: break
-            case .unread: if !readState.isUnread(snap) { return false }
-            case .needsReply: if snap.lastMessage?.isFromMe != false { return false }
-            case .awaitingReply: if snap.lastMessage?.isFromMe != true { return false }
-            case .firstDegree: if snap.record.distance != "DISTANCE_1" { return false }
+            case .all: if q.isEmpty && tucked(snap) { return false }
+            case .unread: if !readState.isUnread(snap) || tucked(snap) { return false }
+            case .needsReply: if snap.lastMessage?.isFromMe != false || tucked(snap) { return false }
+            case .awaitingReply: if snap.lastMessage?.isFromMe != true || tucked(snap) { return false }
+            case .firstDegree: if snap.record.distance != "DISTANCE_1" || tucked(snap) { return false }
+            case .reminders: if organizer.snooze(snap.record.convId) == nil { return false }
+            case .archived: if !organizer.isArchived(snap) { return false }
+            case .label(let id): if !organizer.has(label: id, snap.record.convId) || organizer.isArchived(snap) { return false }
             }
             return q.isEmpty || matches(snap, q)
+        }
+        if case .reminders = filter {
+            // Soonest due first; the list is otherwise newest-activity first.
+            filtered.sort { (organizer.snooze($0.record.convId)?.until ?? .distantFuture) < (organizer.snooze($1.record.convId)?.until ?? .distantFuture) }
+        }
+    }
+
+    // MARK: Labels / notes / snooze / archive
+
+    /// Last organizer action, so the toast can offer Undo.
+    var undo: (title: String, action: () -> Void)?
+    /// Popovers on the open thread, so menu commands and keys can open them.
+    var showLabelPicker = false
+    var showSnoozePicker = false
+    var showNoteEditor = false
+    var renamingLabel: InboxLabel?
+
+    func unreadCount(label id: String) -> Int {
+        snapshots.filter { organizer.has(label: id, $0.record.convId) && readState.isUnread($0) && !organizer.isArchived($0) }.count
+    }
+    var dueCount: Int { organizer.snoozes.filter { $0.value.until <= Date() }.count }
+
+    private func showUndo(_ text: String, _ title: String, _ action: @escaping () -> Void) {
+        undo = (title, action)
+        toast = text
+    }
+
+    func toggle(label id: String, _ convId: String) {
+        organizer.toggle(label: id, convId)
+        organizer.save()
+    }
+
+    @discardableResult
+    func addLabel(_ name: String, color: String? = nil, to convId: String? = nil) -> InboxLabel? {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
+        let l = organizer.addLabel(name: trimmed, color: color)
+        if let convId, !organizer.has(label: l.id, convId) { organizer.toggle(label: l.id, convId) }
+        organizer.save()
+        return l
+    }
+
+    func rename(label id: String, to name: String, color: String? = nil) {
+        organizer.rename(label: id, to: name, color: color)
+        organizer.save()
+    }
+
+    func deleteLabel(_ id: String) {
+        organizer.deleteLabel(id)
+        organizer.save()
+        if filter == .label(id) { filter = .all }
+    }
+
+    func setNote(_ text: String, _ convId: String) {
+        guard organizer.note(convId) != text else { return }
+        organizer.setNote(text, convId)
+        organizer.save()
+    }
+
+    func archive(_ convId: String) {
+        guard let snap = byId[convId] else { return }
+        organizer.archive(snap)
+        organizer.save()
+        if selectedConvId == convId, filter != .archived { selectNeighborOrNone(of: convId) }
+        showUndo("Archived \(snap.record.displayName)", "Undo") { [weak self] in self?.unarchive(convId) }
+    }
+
+    func toggleArchive(_ convId: String) {
+        if isArchived(convId) { unarchive(convId) } else { archive(convId) }
+    }
+
+    func unarchive(_ convId: String) {
+        organizer.unarchive(convId)
+        organizer.save()
+    }
+
+    func isArchived(_ convId: String) -> Bool { byId[convId].map { organizer.isArchived($0) } ?? false }
+
+    func snooze(_ convId: String, until: Date, hidden: Bool, note: String? = nil) {
+        guard let snap = byId[convId] else { return }
+        let previous = organizer.snooze(convId)
+        organizer.setSnooze(snap, until: until, hidden: hidden, note: note)
+        organizer.save()
+        if hidden, selectedConvId == convId, filter != .reminders { selectNeighborOrNone(of: convId) }
+        let when = Fmt.reminderTime(until)
+        showUndo(hidden ? "Snoozed until \(when)" : "Reminder set for \(when)", "Undo") { [weak self] in
+            guard let self else { return }
+            if let previous { self.organizer.snoozes[convId] = previous } else { self.organizer.clearSnooze(convId) }
+            self.organizer.save()
+        }
+    }
+
+    func clearSnooze(_ convId: String) {
+        organizer.clearSnooze(convId)
+        organizer.save()
+    }
+
+    /// After tucking the open thread away, move to the next row so the pane isn't left empty.
+    private func selectNeighborOrNone(of convId: String) {
+        let rows = navigationOrder
+        if let i = rows.firstIndex(where: { $0.record.convId == convId }) {
+            let next = rows.indices.contains(i + 1) ? rows[i + 1] : (i > 0 ? rows[i - 1] : nil)
+            select(next?.record.convId)
+        } else {
+            select(nil)
+        }
+    }
+
+    /// Fired by a minute timer: due reminders ping once and come back into the inbox.
+    var onReminderDue: ((ConversationSnapshot, Snooze) -> Void)?
+    private var reminderTimer: Task<Void, Never>?
+
+    private func startReminderClock() {
+        reminderTimer?.cancel()
+        reminderTimer = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                self?.fireDueReminders()
+                try? await Task.sleep(for: .seconds(30))
+            }
+        }
+    }
+
+    func fireDueReminders() {
+        let due = organizer.takeDue()
+        guard !due.isEmpty else { recompute(); return }
+        organizer.save()
+        for id in due {
+            if let snap = byId[id], let s = organizer.snooze(id) { onReminderDue?(snap, s) }
         }
     }
 
@@ -181,10 +338,12 @@ final class InboxModel {
         w.start()
         watcher = w
         loadConnectionsIfNeeded()
+        startReminderClock()
     }
 
     func detach() {
         watcher?.stop(); watcher = nil
+        reminderTimer?.cancel(); reminderTimer = nil
         accountDir = nil
         snapshots = []; byId = [:]; messages = [:]
     }
@@ -313,7 +472,7 @@ final class InboxModel {
     // MARK: Keyboard navigation
 
     /// The rows the arrow keys walk: pinned first (grid order), then the list.
-    private var navigationOrder: [ConversationSnapshot] {
+    var navigationOrder: [ConversationSnapshot] {
         let q = searchText.trimmingCharacters(in: .whitespaces).isEmpty && filter == .all
         return q ? pinnedSnapshots + filtered.filter { !readState.isPinned($0.record.convId) } : filtered
     }

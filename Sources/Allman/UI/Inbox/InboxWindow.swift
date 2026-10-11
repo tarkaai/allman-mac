@@ -50,16 +50,22 @@ struct InboxWindow: View {
         })
         .overlay(alignment: .bottom) {
             if let toast = inbox.toast {
-                Text(toast)
-                    .font(.callout)
-                    .padding(.horizontal, 14).padding(.vertical, 8)
-                    .background(.regularMaterial, in: Capsule())
-                    .padding(.bottom, 70)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .task {
-                        try? await Task.sleep(for: .seconds(4))
-                        inbox.toast = nil
+                HStack(spacing: 10) {
+                    Text(toast).font(.callout)
+                    if let undo = inbox.undo {
+                        Button(undo.title) { undo.action(); inbox.undo = nil; inbox.toast = nil }
+                            .buttonStyle(.link).font(.callout.weight(.semibold))
                     }
+                }
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(.regularMaterial, in: Capsule())
+                .padding(.bottom, 70)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .task(id: toast) {
+                    try? await Task.sleep(for: .seconds(inbox.undo == nil ? 4 : 7))
+                    inbox.toast = nil
+                    inbox.undo = nil
+                }
             }
         }
         .animation(.default, value: inbox.toast)

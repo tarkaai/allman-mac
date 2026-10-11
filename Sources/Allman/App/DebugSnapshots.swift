@@ -87,6 +87,48 @@ enum DebugSnapshots {
                 w.center()
                 try? await Task.sleep(for: .seconds(1))
                 capture(w, to: out.appendingPathComponent("inbox.png"))
+                // Labels, a note, a snooze and a reminder on the first few threads (ALLMAN_SNAPSHOT_ORGANIZE=1), restored afterwards.
+                let originalOrganizer = model.inbox.organizer
+                if ProcessInfo.processInfo.environment["ALLMAN_SNAPSHOT_ORGANIZE"] != nil {
+                    let rows = model.inbox.snapshots.prefix(8).map(\.record.convId)
+                    let hot = model.inbox.addLabel("Hot lead", color: "red")!
+                    let hiring = model.inbox.addLabel("Hiring", color: "green")!
+                    let ait = model.inbox.addLabel("AI Tinkerers", color: "purple")!
+                    if rows.count >= 6 {
+                        model.inbox.toggle(label: hot.id, rows[0]); model.inbox.toggle(label: ait.id, rows[0])
+                        model.inbox.toggle(label: hiring.id, rows[1])
+                        model.inbox.toggle(label: ait.id, rows[2]); model.inbox.toggle(label: hot.id, rows[2]); model.inbox.toggle(label: hiring.id, rows[2])
+                        model.inbox.setNote("Met at the GTM track. Wants the deck before Friday.", rows[0])
+                        model.inbox.snooze(rows[3], until: Date().addingTimeInterval(-60), hidden: false, note: "Ask about the pilot")
+                        model.inbox.snooze(rows[4], until: Date().addingTimeInterval(86_400 * 2), hidden: true)
+                        model.inbox.select(rows[0])
+                    }
+                    model.inbox.toast = nil
+                    try? await Task.sleep(for: .seconds(1.5))
+                    capture(w, to: out.appendingPathComponent("organize.png"))
+                    model.inspectorVisible = true
+                    try? await Task.sleep(for: .seconds(1.5))
+                    capture(w, to: out.appendingPathComponent("organize-inspector.png"))
+                    model.inspectorVisible = false
+                    model.inbox.filter = .label(ait.id)
+                    try? await Task.sleep(for: .seconds(1))
+                    capture(w, to: out.appendingPathComponent("organize-label.png"))
+                    model.inbox.filter = .reminders
+                    try? await Task.sleep(for: .seconds(1))
+                    capture(w, to: out.appendingPathComponent("organize-reminders.png"))
+                    model.inbox.filter = .all
+                    model.inbox.showLabelPicker = true
+                    try? await Task.sleep(for: .seconds(1.2))
+                    if let pop = NSApp.windows.first(where: { String(describing: type(of: $0)).contains("Popover") && $0.isVisible }) { capture(pop, to: out.appendingPathComponent("organize-labelpicker.png")) }
+                    model.inbox.showLabelPicker = false
+                    model.inbox.showSnoozePicker = true
+                    try? await Task.sleep(for: .seconds(1.2))
+                    if let pop = NSApp.windows.first(where: { String(describing: type(of: $0)).contains("Popover") && $0.isVisible }) { capture(pop, to: out.appendingPathComponent("organize-snooze.png")) }
+                    model.inbox.showSnoozePicker = false
+                    try? await Task.sleep(for: .milliseconds(500))
+                    model.inbox.organizer = originalOrganizer
+                    model.inbox.organizer.save()
+                }
                 let hadInspector = model.inspectorVisible
                 model.inspectorVisible = true
                 try? await Task.sleep(for: .seconds(1.5))

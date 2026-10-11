@@ -63,8 +63,19 @@ struct ConversationListView: View {
                 .focused($listFocused)
                 .onKeyPress(.return) { inbox.requestFocus(.composer); return .handled }
                 .onKeyPress(.space) { inbox.requestFocus(.composer); return .handled }
+                .onKeyPress(characters: .letters, phases: .down) { press in
+                    // Kondo-style single keys while the list has focus (no modifiers).
+                    guard press.modifiers.isDisjoint(with: [.command, .control, .option]) else { return .ignored }
+                    return handleKey(press.characters) ? .handled : .ignored
+                }
             }
         }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if !inbox.organizer.labels.isEmpty || !inbox.organizer.snoozes.isEmpty {
+                LabelStrip()
+            }
+        }
+        .sheet(item: Binding(get: { inbox.renamingLabel }, set: { inbox.renamingLabel = $0 })) { RenameLabelSheet(label: $0).environment(model) }
         .searchable(text: $inbox.searchText, placement: .sidebar, prompt: "Search")
         .searchFocused($searchFocused)
         .toolbar(removing: .sidebarToggle)
@@ -111,8 +122,17 @@ struct ConversationListView: View {
             ToolbarItem(placement: .automatic) {
                 Menu {
                     Picker("Filter", selection: $inbox.filter) {
-                        ForEach(InboxModel.Filter.allCases) { f in
-                            Label(f == .unread && inbox.unreadCount > 0 ? "Unread (\(inbox.unreadCount))" : f.rawValue, systemImage: f.symbol).tag(f)
+                        ForEach(InboxModel.Filter.builtIn) { f in
+                            Label(f == .unread && inbox.unreadCount > 0 ? "Unread (\(inbox.unreadCount))" : f.title, systemImage: f.symbol).tag(f)
+                        }
+                        Divider()
+                        Label(inbox.dueCount > 0 ? "Snoozed & reminders (\(inbox.dueCount) due)" : "Snoozed & reminders", systemImage: InboxModel.Filter.reminders.symbol).tag(InboxModel.Filter.reminders)
+                        Label("Archived", systemImage: InboxModel.Filter.archived.symbol).tag(InboxModel.Filter.archived)
+                        if !inbox.organizer.labels.isEmpty {
+                            Divider()
+                            ForEach(inbox.organizer.labels) { l in
+                                Label(l.name, systemImage: "tag.fill").tag(InboxModel.Filter.label(l.id))
+                            }
                         }
                     }
                     .pickerStyle(.inline)
@@ -122,8 +142,29 @@ struct ConversationListView: View {
                 } label: {
                     Label("Filter", systemImage: inbox.filter == .all ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
                 }
-                .help(inbox.filter == .all ? "Filter conversations" : "Filtering: \(inbox.filter.rawValue)")
+                .help(inbox.filter == .all ? "Filter conversations" : "Filtering: \(filterTitle(inbox.filter))")
             }
+        }
+    }
+
+    private func filterTitle(_ f: InboxModel.Filter) -> String {
+        if case .label(let id) = f { return model.inbox.organizer.label(id)?.name ?? "Label" }
+        return f.title
+    }
+
+    /// j/k move, e archive, h snooze, l label, n note, u unread view, i details.
+    private func handleKey(_ chars: String) -> Bool {
+        let inbox = model.inbox
+        switch chars {
+        case "j": inbox.selectNext(); return true
+        case "k": inbox.selectPrevious(); return true
+        case "e": if let id = inbox.selectedConvId { inbox.toggleArchive(id) }; return true
+        case "h": if inbox.selectedConvId != nil { inbox.showSnoozePicker = true }; return true
+        case "l": if inbox.selectedConvId != nil { inbox.showLabelPicker = true }; return true
+        case "n": if inbox.selectedConvId != nil { inbox.showNoteEditor = true }; return true
+        case "u": inbox.filter = inbox.filter == .unread ? .all : .unread; return true
+        case "i": model.inspectorVisible.toggle(); return true
+        default: return false
         }
     }
 
@@ -138,6 +179,26 @@ struct ConversationListView: View {
         }
         if inbox.isUnread(snap) { Button("Mark as Read") { inbox.markSeen(id) } }
         Divider()
+        Menu("Labels") {
+            ForEach(inbox.organizer.labels) { l in
+                Button { inbox.toggle(label: l.id, id) } label: {
+                    Label(l.name, systemImage: inbox.organizer.has(label: l.id, id) ? "checkmark.circle.fill" : "circle")
+                }
+            }
+            if !inbox.organizer.labels.isEmpty { Divider() }
+            Button("New Label…") { inbox.select(id); inbox.showLabelPicker = true }
+        }
+        Menu("Snooze") {
+            ForEach(Array(Snooze.presets().enumerated()), id: \.offset) { _, p in
+                Button("\(p.title) · \(Fmt.reminderTime(p.date))") { inbox.snooze(id, until: p.date, hidden: true) }
+            }
+            Divider()
+            Button("Remind me…") { inbox.select(id); inbox.showSnoozePicker = true }
+            if inbox.organizer.snooze(id) != nil { Button("Clear Snooze / Reminder") { inbox.clearSnooze(id) } }
+        }
+        Button(inbox.organizer.note(id).isEmpty ? "Add Note…" : "Edit Note…") { inbox.select(id); inbox.showNoteEditor = true }
+        Button(inbox.isArchived(id) ? "Unarchive" : "Archive") { inbox.toggleArchive(id) }
+        Divider()
         if let url = snap.record.linkedInProfileURL { Button("Open LinkedIn Profile") { NSWorkspace.shared.open(url) } }
         if let url = snap.record.linkedInThreadURL { Button("Open Thread on LinkedIn") { NSWorkspace.shared.open(url) } }
     }
@@ -148,6 +209,9 @@ struct ConversationListView: View {
         case .unread: return "All caught up"
         case .needsReply: return "Nothing waiting on you"
         case .awaitingReply: return "No open threads"
+        case .reminders: return "No snoozes or reminders"
+        case .archived: return "Nothing archived"
+        case .label(let id): return "Nothing labeled \(inbox.organizer.label(id)?.name ?? "")"
         default: return "No conversations"
         }
     }
@@ -168,12 +232,17 @@ struct ConversationListView: View {
 }
 
 struct ConversationRow: View {
+    @Environment(AppModel.self) private var model
     let snapshot: ConversationSnapshot
     let unreadCount: Int
 
     var body: some View {
         let r = snapshot.record
         let unread = unreadCount > 0
+        let org = model.inbox.organizer
+        let labels = org.labels(for: r.convId)
+        let snooze = org.snooze(r.convId)
+        let hasNote = !org.note(r.convId).isEmpty
         HStack(alignment: .top, spacing: 10) {
             AvatarView(url: r.avatarURL, name: r.displayName, size: 40)
             VStack(alignment: .leading, spacing: 2) {
@@ -183,6 +252,12 @@ struct ConversationRow: View {
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                     Spacer(minLength: 6)
+                    if let snooze {
+                        Image(systemName: snooze.until <= Date() ? "bell.badge.fill" : (snooze.hidden ? "moon.zzz.fill" : "bell.fill"))
+                            .font(.caption2).foregroundStyle(.orange)
+                            .help((snooze.hidden ? "Snoozed until " : "Reminder ") + Fmt.reminderTime(snooze.until))
+                    }
+                    if hasNote { Image(systemName: "note.text").font(.caption2).foregroundStyle(.secondary).help(org.note(r.convId)) }
                     Text(Fmt.listTime(snapshot.activityDate))
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -207,6 +282,13 @@ struct ConversationRow: View {
                             .background(Color(nsColor: .systemBlue), in: Capsule())
                             .padding(.top, 1)
                     }
+                }
+                if !labels.isEmpty {
+                    HStack(spacing: 4) {
+                        ForEach(labels.prefix(3)) { LabelChip(label: $0) }
+                        if labels.count > 3 { Text("+\(labels.count - 3)").font(.caption2).foregroundStyle(.secondary) }
+                    }
+                    .padding(.top, 2)
                 }
             }
         }

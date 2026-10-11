@@ -162,6 +162,10 @@ final class AppModel {
             session.engine.onSyncFinished = { [weak self] _ in self?.refreshAccountAuth(accountId: id) }
             session.engine.onLoginFinished = { [weak self] ok in if ok { Task { await self?.bootstrap() } } }
             session.inbox.onNewInbound = { [weak self] fresh in self?.notifyFromStore(fresh, accountId: id) }
+            session.inbox.onReminderDue = { [weak self] snap, snooze in
+                let body = snooze.note ?? (snooze.hidden ? "Back in your inbox — you snoozed this thread." : "You asked to come back to this thread.")
+                self?.notifier.notifyMessage(accountId: id, convId: snap.record.convId, sender: "Reminder · \(snap.record.displayName)", body: body, urn: "reminder:\(snap.record.convId):\(Int(snooze.until.timeIntervalSince1970))")
+            }
         }
     }
 

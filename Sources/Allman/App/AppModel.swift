@@ -33,10 +33,13 @@ final class AppModel {
     /// Stand-ins while no account exists, so views never special-case nil.
     private let idleEngine = SyncEngine()
     private let idleInbox: InboxModel
+    private let idleNetwork: NetworkModel
 
     /// Set by the AppKit controllers so model code can open windows.
     var openInboxWindow: (() -> Void)?
     var openSettingsWindow: (() -> Void)?
+    /// SwiftUI's openWindow(id:) bridged from a live view; the URL scheme is only a fallback.
+    var openNetworkWindow: (() -> Void)?
     var closePanel: (() -> Void)?
     /// Dev snapshots only: show every bubble's timestamp as if hovered.
     var debugShowTimes = false
@@ -57,6 +60,7 @@ final class AppModel {
     var accounts: [Account] { sessions.map(\.account) }
     var inbox: InboxModel { current?.inbox ?? idleInbox }
     var engine: SyncEngine { current?.engine ?? idleEngine }
+    var network: NetworkModel { current?.network ?? idleNetwork }
     var accountDisplayName: String { current?.displayName ?? "Allman" }
 
     /// The menu bar glyph summarizes every account: attention first, then the weakest link.
@@ -76,6 +80,7 @@ final class AppModel {
         storeURL = store
         reader = StoreReader(storeURL: store)
         idleInbox = InboxModel(reader: reader, readState: ReadState())
+        idleNetwork = NetworkModel(reader: reader)
         currentId = UserDefaults.standard.string(forKey: Self.currentAccountKey)
         notifier.onOpenConversation = { [weak self] accountId, convId in
             self?.openInbox(accountId: accountId, convId: convId.isEmpty ? nil : convId)
@@ -115,6 +120,7 @@ final class AppModel {
     private func start(_ session: AccountSession) async {
         let acct = session.account
         await session.inbox.attach(account: acct, context: session.context)
+        session.network.attach(account: acct, context: session.context, inbox: session.inbox)
         session.engine.configure(storeURL: storeURL, account: acct.slug, initialLastSync: acct.auth.lastSyncDate)
 
         guard acct.auth.isAuthenticated else {
@@ -146,6 +152,7 @@ final class AppModel {
         for gone in sessions where !next.contains(where: { $0.id == gone.id }) {
             gone.engine.stop()
             gone.inbox.detach()
+            gone.network.detach()
         }
         sessions = next
         wire()
@@ -296,6 +303,13 @@ final class AppModel {
     func openSettings() {
         closePanel?()
         openSettingsWindow?()
+    }
+
+    func openNetwork() {
+        closePanel?()
+        NSApp.activate(ignoringOtherApps: true)
+        if let w = NSApp.windows.first(where: { $0.identifier?.rawValue == "network" && $0.isVisible }) { w.makeKeyAndOrderFront(nil); return }
+        if let open = openNetworkWindow { open() } else { NSWorkspace.shared.open(URL(string: "allman://network")!) }
     }
 
     // MARK: Notifications

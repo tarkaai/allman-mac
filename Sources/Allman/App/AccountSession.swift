@@ -14,12 +14,14 @@ final class AccountSession: Identifiable {
     private(set) var account: Account
     let engine = SyncEngine()
     let inbox: InboxModel
+    let network: NetworkModel
     let context: AllmanRunner.Context
 
     init(account: Account, reader: StoreReader, storeURL: URL) {
         id = account.profileId
         self.account = account
         inbox = InboxModel(reader: reader, readState: ReadState.load(accountId: account.profileId), organizer: Organizer.load(accountId: account.profileId))
+        network = NetworkModel(reader: reader)
         context = AllmanRunner.Context(storeURL: storeURL, account: account.slug)
     }
 

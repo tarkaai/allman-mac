@@ -3,6 +3,7 @@ import SwiftUI
 
 struct InboxWindow: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
     @State private var composing = false
 
     var body: some View {
@@ -39,9 +40,12 @@ struct InboxWindow: View {
                 } label: { Label("Sync Now", systemImage: "arrow.clockwise") }
                     .disabled(model.engine.isSyncing)
                     .help("Sync the last day from LinkedIn (⌘R)")
+                Button { model.openNetwork() } label: { Label("Network", systemImage: "person.2") }
+                    .help("Your connections, profile enrichment and connection requests (⌘2)")
             }
         }
         .sheet(isPresented: $composing) { ComposeSheet().environment(model) }
+        .onAppear { model.openNetworkWindow = { openWindow(id: "network") } }
         .onReceive(NotificationCenter.default.publisher(for: .allmanCompose)) { _ in composing = true }
         .frame(minWidth: 820, minHeight: 520)
         .background(WindowAccessor { window in

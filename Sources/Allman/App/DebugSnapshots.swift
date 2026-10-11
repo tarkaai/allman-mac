@@ -183,6 +183,18 @@ enum DebugSnapshots {
                 }
             }
 
+            // The Network window (ALLMAN_SNAPSHOT_NETWORK=1), connections loaded from the store copy.
+            if ProcessInfo.processInfo.environment["ALLMAN_SNAPSHOT_NETWORK"] != nil {
+                model.openNetwork()
+                try? await Task.sleep(for: .seconds(4))
+                if let nw = NSApp.windows.first(where: { AppDelegate.isNetwork($0) && $0.isVisible }) {
+                    nw.setContentSize(NSSize(width: 1000, height: 620)); nw.center()
+                    try? await Task.sleep(for: .seconds(1))
+                    capture(nw, to: out.appendingPathComponent("network.png"))
+                    nw.orderOut(nil)
+                }
+            }
+
             // The real status-item popover (right-click on the menu bar icon).
             if let controller = StatusItemController.shared {
                 controller.showPanel()

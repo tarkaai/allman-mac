@@ -26,6 +26,8 @@ struct AllmanApp: App {
             CommandMenu("Inbox") {
                 Button("New Message…") { model.openInbox(convId: nil); NotificationCenter.default.post(name: .allmanCompose, object: nil) }
                     .keyboardShortcut("n", modifiers: .command)
+                Button("Network…") { model.openNetwork() }
+                    .keyboardShortcut("2", modifiers: .command)
                 Divider()
                 Button("Sync Now") { model.engine.syncNow(from: "1d") }
                     .keyboardShortcut("r", modifiers: .command)
@@ -92,6 +94,14 @@ struct AllmanApp: App {
                 }
             }
         }
+
+        Window("Network", id: "network") {
+            NetworkWindow()
+                .environment(model)
+        }
+        .defaultSize(width: 980, height: 620)
+        .windowResizability(.contentMinSize)
+        .handlesExternalEvents(matching: ["network"])
 
         Settings {
             SettingsView()

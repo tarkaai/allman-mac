@@ -10,6 +10,7 @@ struct ComposeSheet: View {
     @State private var searching = false
     @State private var remoteError: String?
     @State private var searchTask: Task<Void, Never>?
+    @State private var connectTarget: PersonHit?
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -51,10 +52,17 @@ struct ComposeSheet: View {
                 if !people.isEmpty || remoteError != nil {
                     Section(searching ? "People · searching LinkedIn…" : "People") {
                         ForEach(people) { person in
-                            personRow(name: person.name, subtitle: person.subtitle, avatar: person.avatarURL, badge: person.badge) {
-                                if let slug = person.slug { start(DraftRecipient(slug: slug, name: person.name, headline: person.subtitle, avatarURL: person.avatarURL)) }
+                            HStack(spacing: 8) {
+                                personRow(name: person.name, subtitle: person.subtitle, avatar: person.avatarURL, badge: person.badge) {
+                                    if let slug = person.slug { start(DraftRecipient(slug: slug, name: person.name, headline: person.subtitle, avatarURL: person.avatarURL)) }
+                                }
+                                .disabled(person.slug == nil)
+                                if let hit = remote.first(where: { "li:\($0.profileId ?? $0.slug ?? $0.name)" == person.id }), hit.distance != "DISTANCE_1", hit.slug != nil {
+                                    Button("Connect") { connectTarget = hit }
+                                        .controlSize(.small)
+                                        .help("Send a connection request (allman connect)")
+                                }
                             }
-                            .disabled(person.slug == nil)
                         }
                         if let remoteError {
                             Label(remoteError, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.secondary)
@@ -70,6 +78,7 @@ struct ComposeSheet: View {
             .listStyle(.inset)
         }
         .frame(width: 520, height: 520)
+        .sheet(item: $connectTarget) { hit in ConnectSheet(slug: hit.slug ?? "", name: hit.name).environment(model) }
         .onAppear {
             focused = true
             inbox.loadConnectionsIfNeeded()

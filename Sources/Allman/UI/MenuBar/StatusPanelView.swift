@@ -5,6 +5,7 @@ import SwiftUI
 
 struct StatusPanelView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
     @State private var tick = Date()
 
     private let timer = Timer.publish(every: 15, on: .main, in: .common).autoconnect()
@@ -217,6 +218,8 @@ struct StatusPanelView: View {
                 .toggleStyle(.checkbox)
                 .font(.callout)
             Spacer()
+            Button("Network…") { model.openNetwork() }
+                .buttonStyle(.plain).font(.callout)
             SettingsLink { Text("Settings…") }
                 .buttonStyle(.plain).font(.callout)
                 .keyboardShortcut(",", modifiers: .command)
@@ -227,6 +230,7 @@ struct StatusPanelView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+        .onAppear { model.openNetworkWindow = { openWindow(id: "network") } }
     }
 }
 

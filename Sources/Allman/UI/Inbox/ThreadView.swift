@@ -159,10 +159,7 @@ struct ThreadView: View {
         .toolbar {
             ToolbarItem(placement: .navigation) { PersonHeader(snapshot: snapshot) }
                 .sharedBackgroundVisibility(.hidden)
-            ToolbarItem(placement: .primaryAction) {
-                Button { model.toggleInspector() } label: { Label("Contact Details", systemImage: model.inspectorVisible ? "info.circle.fill" : "info.circle") }
-                    .help(model.inspectorVisible ? "Hide contact details (⌥⌘I)" : "Show contact details (⌥⌘I)")
-            }
+            ToolbarItem(placement: .primaryAction) { inspectorToggle }
         }
     }
 
@@ -179,6 +176,15 @@ struct ThreadView: View {
                 try? await Task.sleep(for: .milliseconds(ms))
                 withAnimation(animation) { proxy.scrollTo("bottom", anchor: .bottom) }
             }
+        }
+    }
+
+    /// Shown only while the inspector is closed; the open inspector carries its own close button.
+    @ViewBuilder
+    private var inspectorToggle: some View {
+        if !model.inspectorVisible {
+            Button { model.toggleInspector() } label: { Label("Contact Details", systemImage: "info.circle") }
+                .help("Show contact details (⌥⌘I)")
         }
     }
 
@@ -254,8 +260,6 @@ struct PersonHeader: View {
                 if let d = degree(r.distance) { Text(d).font(.caption2.weight(.medium)).padding(.horizontal, 5).padding(.vertical, 1).background(.quaternary, in: Capsule()) }
             }),
             line1: brief,
-            line2: conn?.location,
-            line2Symbol: "mappin.and.ellipse",
             onTap: { model.toggleInspector() }
         )
         .help("Contact details (⌥⌘I)")

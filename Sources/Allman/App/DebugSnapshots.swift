@@ -146,6 +146,7 @@ enum DebugSnapshots {
                     for s in model.snippets.snippets where !originalSnippets.contains(s) { model.snippets.remove(s.id) }
                 }
                 let hadInspector = model.inspectorVisible
+                if model.inbox.selectedConvId == nil, let conv = target?.record.convId { model.inbox.select(conv) }
                 model.inspectorVisible = true
                 try? await Task.sleep(for: .seconds(1.5))
                 capture(w, to: out.appendingPathComponent("inbox-inspector.png"))

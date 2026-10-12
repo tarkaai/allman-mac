@@ -23,9 +23,11 @@ struct ContactInspector: View {
                 }
                 links(r)
             }
-            .padding(.horizontal, 16).padding(.top, 2).padding(.bottom, 16)
+            .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 16)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        // The header row sits on the toolbar line, with its own close (i) at the trailing end.
+        .ignoresSafeArea(.container, edges: .top)
         .contentMargins(.top, 0, for: .scrollContent)
         .scrollEdgeEffectStyle(.soft, for: .top)
     }
@@ -34,10 +36,10 @@ struct ContactInspector: View {
 
     private func header(_ r: ConversationRecord, _ conn: Connection?) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 12) {
-                AvatarView(url: r.avatarURL ?? conn?.profilePictureUrl.flatMap(URL.init(string:)), name: r.displayName, size: 56)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(r.displayName).font(AFont.title).lineLimit(2)
+            HStack(alignment: .center, spacing: 10) {
+                AvatarView(url: r.avatarURL ?? conn?.profilePictureUrl.flatMap(URL.init(string:)), name: r.displayName, size: 36)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(r.displayName).font(AFont.title).lineLimit(1)
                     HStack(spacing: 6) {
                         if let p = conn?.pronounText ?? pronoun(r.pronoun) { Text(p).font(AFont.meta).foregroundStyle(.secondary) }
                         if let d = distance(r.distance) { badge(d) }
@@ -45,7 +47,12 @@ struct ContactInspector: View {
                         if r.isVerified == true { Image(systemName: "checkmark.seal.fill").font(AFont.meta).foregroundStyle(.blue).help("Verified") }
                     }
                 }
+                Spacer(minLength: 6)
+                Button { model.toggleInspector() } label: { Image(systemName: "info.circle.fill").font(.system(size: 15)).foregroundStyle(.secondary) }
+                    .buttonStyle(.plain)
+                    .help("Hide contact details (⌥⌘I)")
             }
+            .frame(height: 36)
             if let h = r.headline ?? conn?.headline, !h.isEmpty {
                 Text(h).font(AFont.secondary).foregroundStyle(.secondary).lineLimit(4).textSelection(.enabled)
             }

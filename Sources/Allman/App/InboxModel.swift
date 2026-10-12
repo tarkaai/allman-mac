@@ -130,7 +130,8 @@ final class InboxModel {
         var scores: [String: Int] = [:]
         filtered = snapshots.filter { snap in
             // Pinned threads live in the grid while browsing; searching/filtering shows them in the list.
-            if browsing && pinSet.contains(snap.record.convId) && snap.record.convId != selectedConvId { return false }
+            // Pinned threads live in the grid while browsing, never in the list as well.
+            if browsing && pinSet.contains(snap.record.convId) { return false }
             if snap.record.convId == selectedConvId { return q.isEmpty || matches(snap, q) }
             if !(q.isEmpty ? belongs(snap, to: filter, now: now) : belongsWhileSearching(snap, to: filter, now: now)) { return false }
             if q.isEmpty { return true }
@@ -345,10 +346,18 @@ final class InboxModel {
 
     /// Sidebar selection: a conversation id or a message-hit id ("msg:…").
     var sidebarSelection: String? {
-        get { selectedHitId ?? selectedConvId }
+        get {
+            if let hit = selectedHitId { return hit }
+            // A pinned thread lives in the grid, not the list: the list holds no selection for it.
+            guard let id = selectedConvId, filtered.contains(where: { $0.record.convId == id }) else { return nil }
+            return id
+        }
         set {
             if let id = newValue, id.hasPrefix("msg:") {
                 if let hit = messageHits.first(where: { $0.id == id }) { open(hit: hit) }
+            } else if newValue == nil, let id = selectedConvId, !filtered.contains(where: { $0.record.convId == id }) {
+                // The list dropping a selection it never showed (pinned-only) is not a deselect.
+                return
             } else {
                 select(newValue)
             }

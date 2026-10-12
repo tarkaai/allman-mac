@@ -120,13 +120,13 @@ final class InboxModel {
         unread = snapshots.filter { readState.isUnread($0) && !tucked($0) }
         unreadCount = unread.count
         pinnedSnapshots = readState.pins.compactMap { byId[$0] }
-        // Pins belong to an inbox: All shows every pin, a label inbox only its members.
+        // Pins stay whatever the filter; a label inbox shows only its own members.
         pinnedInView = pinnedSnapshots.filter { snap in
             if case .label(let id) = filter { return organizer.has(label: id, snap.record.convId) }
-            return filter == .all
+            return true
         }
         let pinSet = Set(pinnedInView.map(\.record.convId))
-        let browsing = q.isEmpty && (filter == .all || filter.isLabel)
+        let browsing = q.isEmpty
         var scores: [String: Int] = [:]
         filtered = snapshots.filter { snap in
             // Pinned threads live in the grid while browsing; searching/filtering shows them in the list.
@@ -289,7 +289,8 @@ final class InboxModel {
         switch filter {
         case .all: return !tucked
         case .unread: return readState.isUnread(snap) && !tucked
-        case .needsReply: return snap.lastMessage?.isFromMe == false && !tucked
+        // A reaction of yours on their last message counts as a reply.
+        case .needsReply: return snap.lastMessage.map { !$0.isFromMe && !$0.reactions.contains { $0.hasUserReacted } } == true && !tucked
         case .awaitingReply: return snap.lastMessage?.isFromMe == true && !tucked
         case .firstDegree: return snap.record.distance == "DISTANCE_1" && !tucked
         case .reminders: return organizer.snooze(snap.record.convId) != nil
@@ -544,20 +545,28 @@ final class InboxModel {
         let current = rows.firstIndex { $0.record.convId == selectedConvId }
         var i = current.map { $0 + delta } ?? (delta > 0 ? 0 : rows.count - 1)
         while i >= 0, i < rows.count {
-            if !unreadOnly || readState.isUnread(rows[i]) { select(rows[i].record.convId); return }
+            if !unreadOnly || readState.isUnread(rows[i]) { select(rows[i].record.convId, reveal: true); return }
             i += delta
         }
         if unreadOnly, let first = (delta > 0 ? rows : rows.reversed()).first(where: { readState.isUnread($0) }) {
-            select(first.record.convId) // wrap around
+            select(first.record.convId, reveal: true) // wrap around
         }
     }
 
     // MARK: Selection / read state
 
-    func select(_ convId: String?) {
+    /// Bumped when a selection was made by the keyboard, a menu, a notification or a
+    /// draft — anything that isn't a click on a visible row — so the list scrolls to it.
+    private(set) var revealToken = 0
+    private(set) var revealId: String?
+    private(set) var revealAt = Date.distantPast
+    func requestReveal(_ convId: String) { revealId = convId; revealAt = Date(); revealToken += 1 }
+
+    func select(_ convId: String?, reveal: Bool = false) {
         if convId != nil, draft != nil { draft = nil }
         selectedHitId = nil
         selectedConvId = convId
+        if reveal, let convId { requestReveal(convId) }
         composerError = nil
         guard let convId else { return }
         Task { await loadMessages(convId: convId) }
@@ -784,7 +793,8 @@ final class InboxModel {
         // Reuse an existing thread when the slug already has one.
         if let existing = snapshots.first(where: { $0.record.slug == recipient.slug }) {
             draft = nil
-            select(existing.record.convId)
+            composing = false
+            select(existing.record.convId, reveal: true)
             return
         }
         selectedConvId = nil
@@ -900,12 +910,12 @@ final class InboxModel {
             await reloadAll()
             draft = nil
             if let bare, byId[bare] != nil {
-                select(bare)
+                select(bare, reveal: true)
             } else if recipients.count == 1, let found = snapshots.first(where: { $0.record.slug == recipient.slug }) {
-                select(found.record.convId)
+                select(found.record.convId, reveal: true)
             } else if recipients.count > 1 {
                 let slugs = Set(recipients.map(\.slug))
-                if let found = snapshots.first(where: { $0.record.isGroupThread && slugs.isSubset(of: Set($0.record.members.compactMap(\.slug))) }) { select(found.record.convId) }
+                if let found = snapshots.first(where: { $0.record.isGroupThread && slugs.isSubset(of: Set($0.record.members.compactMap(\.slug))) }) { select(found.record.convId, reveal: true) }
             }
             toast = recipients.count > 1 ? "Sent to \(recipients.count) people" : "Sent to \(recipient.name)"
             return true

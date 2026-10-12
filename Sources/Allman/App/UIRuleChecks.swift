@@ -46,7 +46,7 @@ enum UIRuleChecks {
         try await wait("window", 10) { window() != nil }
         let w = window()!
         w.setContentSize(NSSize(width: 1080, height: 700)); w.center()
-        if model.isSidebarCollapsed { model.toggleSidebar() }
+        model.resetSidebarState()
         // Away from the real pointer: a hand resting on the trackpad must not swipe a row.
         if let screen = w.screen ?? NSScreen.main {
             let mouse = NSEvent.mouseLocation
@@ -113,7 +113,20 @@ enum UIRuleChecks {
         // --- R6: thread header on the toolbar row; R5: exactly one `i`, far right.
         if let header = ax(w, "thread-header") {
             check("R6", "thread header on the top band, left of the detail", y(header).top < Chrome.barHeight, "top=\(Int(y(header).top))")
+            check("R6", "thread header is not jammed against the top edge", y(header).top >= 8, "top=\(Int(y(header).top))")
         } else { check("R6", "thread header present while the panel is closed", false) }
+        if let fm = ax(w, "filter-menu"), let title = ax(w, "inbox-title") { check("R25", "filter icon sits left of the inbox title", fm.maxX <= title.minX, "filter.x=\(Int(fm.minX)) title.x=\(Int(title.minX))") } else { check("R25", "filter menu + title present", false) }
+        if let cb = ax(w, "compose-button") { check("R15c", "new-message button is a step larger than the bar icons", cb.height >= 26 && cb.width >= 28, "\(Int(cb.width))x\(Int(cb.height))") }
+        // R21: the thread's actions sit beside the `i`, same size, same row.
+        func actionsInPlace(_ label: String) {
+            guard let i = ax(w, "inspector-toggle") else { check("R21", "\(label): `i` present", false); return }
+            let ids = ["action-pin", "action-label", "action-snooze", "action-note", "action-archive"]
+            let frames = ids.compactMap { ax(w, $0) }
+            let sameRow = frames.allSatisfy { abs($0.midY - i.midY) < 1 && abs($0.height - i.height) < 1 && abs($0.width - i.width) < 1 }
+            let ordered = zip(frames, frames.dropFirst()).allSatisfy { $0.maxX <= $1.minX + 0.5 } && (frames.last.map { $0.maxX <= i.minX + 0.5 } ?? false)
+            check("R21", "\(label): pin·label·snooze·note·archive beside the `i`, same size and row", frames.count == 5 && sameRow && ordered, "found=\(frames.count) i=\(Int(i.minX)),\(Int(i.midY))")
+        }
+        actionsInPlace("panel closed")
         let toggles = axAll(w, "inspector-toggle")
         check("R5", "exactly one contact-panel toggle while closed", toggles.count == 1, "count=\(toggles.count)")
         if toggles.isEmpty { dump(w, to: shots); return checks }
@@ -137,6 +150,7 @@ enum UIRuleChecks {
         check("R5", "no stray action from the click", model.inbox.toast == nil, "toast=\(model.inbox.toast ?? "nil")")
         let openToggles = axAll(w, "inspector-toggle")
         check("R5", "exactly one `i` while open", openToggles.count == 1, "count=\(openToggles.count)")
+        actionsInPlace("panel open")
         check("R5", "the `i` did not move", abs((openToggles.first?.midX ?? -99) - closedX) < 2, "closed.x=\(Int(closedX)) open.x=\(Int(openToggles.first?.midX ?? -99))")
         check("R5", "no » overflow with the panel open", !hasOverflow(w))
         check("R6", "thread header hidden while the panel is open", ax(w, "thread-header") == nil)
@@ -188,6 +202,52 @@ enum UIRuleChecks {
             check("R9", "after 6 steps back up the selected row is on screen", row.minY >= listF.minY - 1 && row.maxY <= listF.maxY + 1, "row=\(Int(row.minY))…\(Int(row.maxY))")
         } else { check("R9", "selected row visible after stepping back up", false, "row probe not found (off screen)") }
 
+        // --- R24: a click on a visible row never scrolls the list; a search result opens in place.
+        if let visible = ids.first(where: { fullyVisible($0) && $0 != model.inbox.selectedConvId }) {
+            let before = ids.filter { fullyVisible($0) }.compactMap { id in ax(w, "row-\(id)").map { (id, $0.minY) } }
+            model.inbox.sidebarSelection = visible
+            try await sleep(600)
+            let moved = before.compactMap { id, yy in ax(w, "row-\(id)").map { abs($0.minY - yy) } }
+            check("R24", "clicking a visible row selects it without moving the list", model.inbox.selectedConvId == visible && !moved.isEmpty && moved.allSatisfy { $0 < 1 }, "maxShift=\(Int(moved.max() ?? -1))")
+        }
+        model.inbox.searchText = "Dakota"
+        try await sleep(900)
+        if let dakota = model.inbox.filtered.first(where: { $0.record.displayName == "Dakota Shaw" }) {
+            let before = ax(w, "row-\(dakota.record.convId)")
+            let orderBefore = model.inbox.filtered.map(\.record.convId)
+            model.inbox.sidebarSelection = dakota.record.convId
+            try await sleep(700)
+            shot("04c-search-select")
+            let after = ax(w, "row-\(dakota.record.convId)")
+            check("R24", "selecting a search result keeps the list order and position", model.inbox.selectedConvId == dakota.record.convId && model.inbox.filtered.map(\.record.convId) == orderBefore && before != nil && after != nil && abs((before?.minY ?? 0) - (after?.minY ?? 99)) < 1, "y \(Int(before?.minY ?? -1))→\(Int(after?.minY ?? -1))")
+        } else { check("R24", "search finds Dakota", false) }
+        model.inbox.searchText = ""
+        try await sleep(600)
+        // --- R24b: a new message to someone with a thread opens that thread, highlighted and on screen.
+        model.inbox.startDraft(DraftRecipient(slug: "blake-rivera", name: "Blake Rivera", headline: nil, avatarURL: nil))
+        try await sleep(1000)
+        shot("04d-draft-existing")
+        if let blake = model.inbox.snapshots.first(where: { $0.record.slug == "blake-rivera" }) {
+            let row = ax(w, "row-\(blake.record.convId)")
+            check("R24b", "new message to an existing contact opens their thread, highlighted and visible", model.inbox.draft == nil && model.inbox.selectedConvId == blake.record.convId && model.inbox.sidebarSelection == blake.record.convId && row.map { $0.minY >= listF.minY - 1 && $0.maxY <= listF.maxY + 1 } == true, "row=\(row.map { "\(Int($0.minY))…\(Int($0.maxY))" } ?? "nil")")
+        }
+        // --- R22: "Needs my reply" treats your reaction as a reply.
+        model.inbox.filter = .needsReply
+        try await sleep(500)
+        let reacted = ids.first { $0.hasPrefix("2-MOCK02") }, unanswered = ids.first { $0.hasPrefix("2-MOCK03") }
+        check("R22", "Needs my reply: a thread whose last message you reacted to is out, an unanswered one is in", reacted.map { r in !model.inbox.filtered.contains { $0.record.convId == r } } == true && unanswered.map { u in model.inbox.filtered.contains { $0.record.convId == u } } == true, "count=\(model.inbox.filtered.count)")
+        // --- R23: pins stay whatever the filter.
+        if let first = ids.first {
+            model.inbox.togglePin(first)
+            model.inbox.filter = .unread
+            try await sleep(700)
+            shot("05b-pins-under-filter")
+            check("R23", "pinned threads stay in the sidebar under the Unread filter", model.inbox.pinnedInView.contains { $0.record.convId == first } && ax(w, "pin-\(first)") != nil, "inView=\(model.inbox.pinnedInView.count)")
+            model.inbox.filter = .all
+            model.inbox.togglePin(first)
+            try await sleep(400)
+        }
+
         // --- R10: selecting an inbox the thread isn't in clears the selection.
         if let label = model.inbox.addLabel("UI check", icon: "tag") {
             model.inbox.select(order.last!.record.convId)
@@ -201,7 +261,14 @@ enum UIRuleChecks {
         } else { check("R10", "could create a label", false) }
 
         // --- R12: group threads appear, named after their members, with sender captions.
-        if let group = model.inbox.snapshots.first(where: { $0.record.isGroupThread }) {
+        if let three = model.inbox.snapshots.first(where: { $0.record.members.count == 3 }) {
+            model.inbox.select(three.record.convId, reveal: true)
+            try await sleep(1200)
+            shot("06b-group-three")
+            check("R27", "a three-person group is named after all three", three.record.displayName == "Priya Example, Theo Sample, Ro Example", three.record.displayName)
+            check("R27", "a three-person group shows a +1 badge on its stacked avatar", !axAll(w, "group-more-badge").isEmpty, "badges=\(axAll(w, "group-more-badge").count)")
+        } else { check("R27", "mock store has a three-person group", false) }
+        if let group = model.inbox.snapshots.first(where: { $0.record.members.count == 2 }) {
             let r = group.record
             check("R12", "group thread is in the list", model.inbox.filtered.contains { $0.record.convId == r.convId } && ax(w, "row-\(r.convId)") != nil || model.inbox.filtered.contains { $0.record.convId == r.convId })
             check("R12", "group named after its members", r.displayName == "Priya Example, Theo Sample", r.displayName)
@@ -226,6 +293,7 @@ enum UIRuleChecks {
 
         // --- R4: collapsing the sidebar leaves the chrome bar exactly where it is; R13b: per-page memory, Settings never collapses.
         let toggleBefore = ax(w, "sidebar-toggle"); let switcherBefore = ax(w, "experience-switcher")
+        let headerBefore = ax(w, "thread-header")
         model.toggleSidebar()
         try await sleep(900)
         shot("09-collapsed")
@@ -233,7 +301,7 @@ enum UIRuleChecks {
         if let t = ax(w, "sidebar-toggle"), let s = ax(w, "experience-switcher"), let t0 = toggleBefore, let s0 = switcherBefore {
             check("R4", "collapsed: toggle and switcher did not move", abs(t.minX - t0.minX) < 1 && abs(t.minY - t0.minY) < 1 && abs(s.minX - s0.minX) < 1, "toggle \(Int(t0.minX))→\(Int(t.minX)) switcher \(Int(s0.minX))→\(Int(s.minX))")
         } else { check("R4", "collapsed: chrome bar present", false) }
-        if let header = ax(w, "thread-header") { check("R4", "collapsed: thread header clears the chrome bar", header.minX >= (ax(w, "experience-switcher")?.maxX ?? 0) + 8, "header.x=\(Int(header.minX))") }
+        if let header = ax(w, "thread-header"), let h0 = headerBefore { check("R6", "collapsed: thread header stays exactly where it was", abs(header.minX - h0.minX) < 1 && abs(header.minY - h0.minY) < 1, "header.x \(Int(h0.minX))→\(Int(header.minX))") } else { check("R6", "collapsed: thread header present", false) }
         check("R5", "collapsed: the `i` stayed put", abs((ax(w, "inspector-toggle")?.midX ?? -99) - closedX) < 2)
         model.show(.network); try await sleep(700)
         check("R13b", "Network remembers its own sidebar state (not collapsed)", !model.isSidebarCollapsed)

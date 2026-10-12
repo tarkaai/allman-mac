@@ -60,6 +60,19 @@ struct GroupAvatarView: View {
             }
         }
         .frame(width: size, height: size)
+        .overlay(alignment: .topTrailing) {
+            // Three or more: how many faces aren't shown.
+            if members.count > 2 {
+                Text("+\(members.count - 2)")
+                    .font(.system(size: max(8, size * 0.22), weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 3).padding(.vertical, 1)
+                    .background(Color.secondary, in: Capsule())
+                    .overlay(Capsule().stroke(Color(nsColor: .windowBackgroundColor), lineWidth: 1.5))
+                    .offset(x: 4, y: -3)
+                    .uiProbe("group-more-badge")
+            }
+        }
     }
 }
 

@@ -4,15 +4,15 @@ import SwiftUI
 /// Window chrome constants (see docs/UI-RULES.md).
 enum Chrome {
     /// The top band: window buttons, chrome bar and page headers live here.
-    static let barHeight: CGFloat = 44
+    static let barHeight: CGFloat = 52
     static let sidebarWidth: CGFloat = 340
     /// Where the chrome bar starts (after the window buttons).
     static let chromeLeading: CGFloat = 76
-    /// Leading inset for a page header while the sidebar is collapsed (room for the chrome bar).
-    static let collapsedLeading: CGFloat = 262
+    /// A page header keeps its place whether the sidebar is open or collapsed.
+    static let headerLeading: CGFloat = sidebarWidth + 16
     static let panelWidth: CGFloat = 300
-    /// Room kept at the far right of the messenger bars for the `i`.
-    static let trailingSlot: CGFloat = 48
+    /// Room kept at the far right of the messenger bars for the thread actions and the `i`.
+    static let trailingSlot: CGFloat = 212
 }
 
 /// The one window, with chrome the app draws itself (no system title bar or
@@ -38,9 +38,15 @@ struct InboxWindow: View {
                 .padding(.leading, Chrome.chromeLeading)
                 .frame(height: Chrome.barHeight)
             if model.experience == .messenger, inbox.selected != nil || inbox.draft != nil {
-                // One `i`, far right, whatever the panel does.
-                HStack { Spacer(); InspectorToggle().padding(.trailing, 12) }
-                    .frame(height: Chrome.barHeight)
+                // The thread's actions and the one `i`, far right, whatever the panel or sidebar do.
+                HStack(spacing: 2) {
+                    Spacer()
+                    if let id = inbox.selectedConvId, inbox.draft == nil { ThreadActions(convId: id) }
+                    InspectorToggle()
+                }
+                .padding(.trailing, 12)
+                .frame(height: Chrome.barHeight)
+                .uiProbe("top-actions")
             }
         }
         .animation(.easeInOut(duration: 0.25), value: collapsed)
@@ -188,7 +194,7 @@ struct PageBar<Leading: View, Trailing: View>: View {
             Spacer(minLength: 8)
             trailing()
         }
-        .padding(.leading, fixedLeading ?? (model.isSidebarCollapsed ? Chrome.collapsedLeading : 16))
+        .padding(.leading, fixedLeading ?? (model.isSidebarCollapsed ? Chrome.headerLeading : 16))
         .padding(.trailing, trailingSlot)
         .frame(maxWidth: .infinity, minHeight: Chrome.barHeight, maxHeight: Chrome.barHeight)
         .contentShape(Rectangle())
@@ -238,22 +244,63 @@ struct PageHeader: View {
     }
 }
 
+/// One look for every button on the top band (the thread actions and the `i`).
+struct BandIcon: View {
+    let name: String
+    var on = false
+    var body: some View {
+        Image(systemName: name)
+            .font(.system(size: 15, weight: .medium))
+            .foregroundStyle(on ? Color.accentColor : .secondary)
+            .frame(width: 28, height: 26)
+            .contentShape(Rectangle())
+    }
+}
+
 /// The one control for the contact panel: `i`, far right of the window, same glyph
 /// whether the panel is open or closed.
 struct InspectorToggle: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        Button { model.toggleInspector() } label: {
-            Image(systemName: "info.circle")
-                .font(.system(size: 15, weight: .medium))
-                .frame(width: 28, height: 26)
-                .contentShape(Rectangle())
+        Button { model.toggleInspector() } label: { BandIcon(name: "info.circle", on: model.inspectorVisible) }
+            .buttonStyle(.plain)
+            .help(model.inspectorVisible ? "Hide contact details (⌥⌘I)" : "Show contact details (⌥⌘I)")
+            .uiProbe("inspector-toggle")
+    }
+}
+
+/// Pin · labels · snooze/remind · note · archive for the open thread, on the top band
+/// beside the `i` — same size, same place, panel open or closed. The label, snooze
+/// and note popovers hang off their buttons.
+struct ThreadActions: View {
+    @Environment(AppModel.self) private var model
+    let convId: String
+
+    var body: some View {
+        @Bindable var inbox = model.inbox
+        let id = convId
+        HStack(spacing: 2) {
+            Button { inbox.togglePin(id) } label: { BandIcon(name: inbox.isPinned(id) ? "pin.fill" : "pin", on: inbox.isPinned(id)) }
+                .buttonStyle(.plain).disabled(!inbox.isPinned(id) && !inbox.canPinMore)
+                .help(inbox.isPinned(id) ? "Unpin (⇧⌘P)" : "Pin (⇧⌘P)")
+                .uiProbe("action-pin")
+            Button { inbox.showLabelPicker = true } label: { BandIcon(name: inbox.organizer.labels(for: id).isEmpty ? "tag" : "tag.fill") }
+                .buttonStyle(.plain).help("Labels (L)")
+                .popover(isPresented: $inbox.showLabelPicker, arrowEdge: .bottom) { LabelPicker(convId: id).environment(model) }
+                .uiProbe("action-label")
+            Button { inbox.showSnoozePicker = true } label: { BandIcon(name: inbox.organizer.snooze(id) == nil ? "clock" : "clock.fill") }
+                .buttonStyle(.plain).help("Snooze or remind (H)")
+                .popover(isPresented: $inbox.showSnoozePicker, arrowEdge: .bottom) { SnoozePicker(convId: id) { inbox.showSnoozePicker = false }.environment(model) }
+                .uiProbe("action-snooze")
+            Button { inbox.showNoteEditor = true } label: { BandIcon(name: inbox.organizer.note(id).isEmpty ? "note.text" : "note.text.badge.plus") }
+                .buttonStyle(.plain).help("Note (N)")
+                .popover(isPresented: $inbox.showNoteEditor, arrowEdge: .bottom) { NoteEditor(convId: id, compact: true).environment(model) }
+                .uiProbe("action-note")
+            Button { inbox.toggleArchive(id) } label: { BandIcon(name: inbox.isArchived(id) ? "tray.and.arrow.up" : "archivebox") }
+                .buttonStyle(.plain).help(inbox.isArchived(id) ? "Unarchive (E)" : "Archive (E)")
+                .uiProbe("action-archive")
         }
-        .buttonStyle(.plain)
-        .foregroundStyle(model.inspectorVisible ? Color.accentColor : .secondary)
-        .help(model.inspectorVisible ? "Hide contact details (⌥⌘I)" : "Show contact details (⌥⌘I)")
-        .uiProbe("inspector-toggle")
     }
 }
 

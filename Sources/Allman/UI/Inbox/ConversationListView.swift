@@ -89,9 +89,10 @@ struct ConversationListView: View {
                         return handleKey(press.characters) ? .handled : .ignored
                     }
                     // Keyboard moves (⌘↑/↓, j/k, next unread) keep the selected row on screen.
-                    .onChange(of: inbox.selectedConvId) { _, id in
-                        if UIProbeRegistry.enabled { NSLog("list: selection → \(id?.prefix(12) ?? "nil") inFiltered=\(id.map { i in inbox.filtered.contains { $0.record.convId == i } } ?? false)") }
-                        guard let id, inbox.filtered.contains(where: { $0.record.convId == id }) else { return }
+                    // Only selections that didn't come from a click on a visible row scroll the
+                    // list (keyboard, menus, notifications, drafts). A click never moves it.
+                    .onChange(of: inbox.revealToken) { _, _ in
+                        guard let id = inbox.revealId, inbox.selectedConvId == id, inbox.filtered.contains(where: { $0.record.convId == id }) else { return }
                         reveal(id, proxy)
                         Task { @MainActor in
                             // Rows re-populate after an inbox switch (and the list may restore an old
@@ -106,7 +107,8 @@ struct ConversationListView: View {
                     // The list is rebuilt when an inbox goes from empty to populated; a selection made
                     // in the same beat is no "change" to observe, so land on it here too.
                     .onAppear {
-                        guard let id = inbox.selectedConvId, inbox.filtered.contains(where: { $0.record.convId == id }) else { return }
+                        guard let id = inbox.selectedConvId, inbox.revealId == id, Date().timeIntervalSince(inbox.revealAt) < 2,
+                              inbox.filtered.contains(where: { $0.record.convId == id }) else { return }
                         Task { @MainActor in
                             for ms in [50, 250, 450] {
                                 try? await Task.sleep(for: .milliseconds(ms))
@@ -316,10 +318,7 @@ struct InboxBar: View {
     var body: some View {
         @Bindable var inbox = model.inbox
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center, spacing: 0) {
-                Text(title(inbox.filter)).font(AFont.title).lineLimit(1).frame(height: 22)
-                Spacer(minLength: 8)
-                HStack(spacing: 2) {
+            HStack(alignment: .center, spacing: 6) {
                 Menu {
                     Picker("Filter", selection: $inbox.filter) {
                         ForEach(InboxModel.Filter.builtIn) { f in Label(f.title, systemImage: f.symbol).tag(f) }
@@ -336,6 +335,10 @@ struct InboxBar: View {
                 .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
                 .frame(width: 24, height: 22)
                 .help("Filter: \(inbox.filter.title)")
+                .uiProbe("filter-menu")
+                Text(title(inbox.filter)).font(AFont.title).lineLimit(1).frame(height: 22).uiProbe("inbox-title")
+                Spacer(minLength: 8)
+                HStack(spacing: 2) {
                 Button { creatingLabel = true } label: { BarIcon("tag.badge.plus") }
                     .buttonStyle(.plain)
                     .help("New label (an inbox of its own)")
@@ -349,10 +352,10 @@ struct InboxBar: View {
                         .padding(12).frame(width: 300)
                         .onAppear { let used = Set(inbox.organizer.labels.map(\.icon)); newIcon = InboxLabel.icons.first { !used.contains($0) } ?? "tag" }
                     }
-                ConversationActions(convId: inbox.selectedConvId, asMenu: false)
-                Button { inbox.composing.toggle() } label: { BarIcon(inbox.composing ? "xmark.circle" : "square.and.pencil") }
+                Button { inbox.composing.toggle() } label: { BarIcon(inbox.composing ? "xmark.circle" : "square.and.pencil", large: true) }
                     .buttonStyle(.plain)
-                    .help(inbox.composing ? "Cancel new message (Esc)" : "New message (⌘N)")
+                    .help(inbox.composing ? "Cancel new message (Esc)" : "New message (⌘N) — pick several people for a group")
+                    .uiProbe("compose-button")
                 }
             }
             FlowLayout(spacing: 4) {
@@ -472,15 +475,17 @@ struct ConversationActions: View {
 struct BarIcon: View {
     let name: String
     var prominent = false
+    /// The new-message button: a step up from the rest of the bar.
+    var large = false
 
-    init(_ name: String, prominent: Bool = false) { self.name = name; self.prominent = prominent }
+    init(_ name: String, prominent: Bool = false, large: Bool = false) { self.name = name; self.prominent = prominent; self.large = large }
 
     var body: some View {
         Image(systemName: name)
-            .font(AFont.icon)
+            .font(large ? .system(size: 17, weight: .medium) : AFont.icon)
             .symbolRenderingMode(.monochrome)
             .foregroundStyle(prominent ? Color.accentColor : Color.secondary)
-            .frame(width: 24, height: 22)
+            .frame(width: large ? 30 : 24, height: large ? 28 : 22)
             .contentShape(Rectangle())
     }
 }
@@ -529,13 +534,6 @@ struct ConversationRow: View {
         let hasNote = !org.note(r.convId).isEmpty
         HStack(alignment: .top, spacing: 10) {
             ConversationAvatar(record: r, size: 40)
-                .overlay(alignment: .bottomTrailing) {
-                    // Which messenger this thread lives on (LinkedIn today).
-                    MessengerBadge(size: 11)
-                        .padding(1.5)
-                        .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 3.7, style: .continuous))
-                        .offset(x: 2, y: 2)
-                }
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(r.displayName)

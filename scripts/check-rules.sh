@@ -25,6 +25,19 @@ if command grep -rn "\.toolbar {\|ToolbarItem(" Sources >/dev/null; then bad "R5
 command grep -q "windowStyle(.hiddenTitleBar)" Sources/Allman/App/AllmanApp.swift && ok "R5 hidden title bar (chrome is ours)" || bad "R5 title bar not hidden"
 # R4: our own sidebar toggle, fixed at the top-left.
 command grep -q 'uiProbe("sidebar-toggle")' $ui/Inbox/InboxWindow.swift && ok "R4 own toggle present" || bad "R4 own toggle missing"
+# R26: no messenger badge on list rows; R21: the thread actions live on the top band, not in the inbox bar.
+python3 -I - $ui/Inbox/ConversationListView.swift <<'PY' || bad "R26/R21 inbox bar or rows carry what belongs elsewhere"
+import sys,re
+s=open(sys.argv[1]).read()
+row=s[s.index("struct ConversationRow"):s.index("struct ", s.index("struct ConversationRow")+10)]
+bar=s[s.index("struct InboxBar"):s.index("struct ", s.index("struct InboxBar")+10)]
+bad=[]
+if "MessengerBadge" in row: bad.append("ConversationRow shows a messenger badge")
+if "ConversationActions(convId: inbox.selectedConvId, asMenu: false)" in bar: bad.append("InboxBar carries the thread actions")
+print("\n".join(bad)); sys.exit(1 if bad else 0)
+PY
+ok "R26/R21 rows without badge; actions on the top band"
+command grep -q "struct ThreadActions" $ui/Inbox/InboxWindow.swift && ok "R21 ThreadActions on the band" || bad "R21 ThreadActions missing"
 # R15b: the selected conversation is highlighted edge to edge (plain list style, not the inset sidebar style).
 command grep -q "listStyle(.plain)" $ui/Inbox/ConversationListView.swift && ! command grep -q "listStyle(.sidebar)" $ui/Inbox/ConversationListView.swift && ok "R15b full-width selection (plain list)" || bad "R15b conversation list must use .plain"
 # R13: one window — no Settings scene, no extra Window scenes.

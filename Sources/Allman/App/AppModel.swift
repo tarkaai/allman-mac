@@ -85,6 +85,8 @@ final class AppModel {
     private(set) var sidebarCollapsed: [String: Bool] = (UserDefaults.standard.dictionary(forKey: AppModel.sidebarKey) as? [String: Bool]) ?? [:]
     var isSidebarCollapsed: Bool { experience != .settings && (sidebarCollapsed[experience.rawValue] ?? false) }
     var canCollapseSidebar: Bool { experience != .settings }
+    /// Checks only: start every page expanded (the preference domain is shared with the real app).
+    func resetSidebarState() { sidebarCollapsed = [:]; UserDefaults.standard.set(sidebarCollapsed, forKey: Self.sidebarKey) }
     func toggleSidebar() {
         guard canCollapseSidebar else { return }
         withAnimation(.easeInOut(duration: 0.25)) { sidebarCollapsed[experience.rawValue] = !isSidebarCollapsed }
@@ -339,7 +341,7 @@ final class AppModel {
 
     func openInbox(accountId: String?, convId: String?) {
         if let accountId { select(accountId: accountId) }
-        if let convId { experience = .messenger; inbox.select(convId) }
+        if let convId { experience = .messenger; inbox.select(convId, reveal: true) }
         closePanel?()
         NSApp.activate(ignoringOtherApps: true)
         openInboxWindow?()

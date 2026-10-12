@@ -32,6 +32,14 @@ Screenshots of every checked state are written next to the test's result JSON.
 | R16 | Row hover actions overlay the time stamp — no layout shift, no flicker. | review |
 | R17 | The thread opens on the newest message and stays there when the panel opens/closes or the window resizes. | mock |
 | R18 | Animations: panel open/close, sidebar collapse and experience switch are single eased transitions; nothing else in the window moves. While the panel slides the thread lays out frame by frame with no animations of its own (no text crossfading at a different pace than the bubbles). | mock (R5/R17 frames) + screenshots |
+| R21 | The open thread's actions (pin · labels · snooze/remind · note · archive) sit on the top band beside the `i`, same size, same row, whether the panel is open or closed. They are not in the inbox bar. | mock + lint |
+| R22 | "Needs my reply" counts your reaction on their last message as a reply. | mock |
+| R23 | Pinned threads stay in the sidebar whatever the filter (a label inbox shows its own pins). | mock |
+| R24 | A click on a visible row never scrolls the list; selecting a search result keeps the result order and position; a new message to someone who already has a thread opens that thread, highlighted and on screen. Only keyboard/menu/notification/draft selections scroll the list. | mock |
+| R25 | The filter icon sits left of the inbox title. | mock |
+| R26 | No messenger badge on list rows (it stays in the thread header and account block). | lint |
+| R27 | Groups of three or more are named after all members and their stacked avatar carries a "+N" badge. | mock |
+| R6b | The thread header keeps its exact place whether the sidebar is open or collapsed, and is not jammed against the top edge (52pt band). | mock |
 | R20 | No personal data in the repo: tests, fixtures and the mock store use obviously synthetic people (`*-example`, `*-sample`), never real names, slugs, ids or message text. | review on every change |
 | R19 | Everything that touches LinkedIn goes through the `allman` CLI; the app never writes into `~/.allman`; app-owned state lives in Application Support (`ALLMAN_APPSUPPORT` overrides it for tests/harness). | lint (R19) + code review |
 

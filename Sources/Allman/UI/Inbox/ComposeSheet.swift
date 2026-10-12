@@ -181,9 +181,15 @@ struct PeopleSearchResults: View {
     }
 
     private func start(_ recipient: DraftRecipient) {
-        // With a draft open, picking someone adds them (a group); otherwise it starts the draft.
+        // With a draft open, picking someone adds them (a group) and keeps the search open
+        // for more; otherwise it starts the draft.
+        let adding = model.inbox.draft != nil
         model.inbox.addDraftRecipient(recipient)
-        model.inbox.composing = false
+        if adding, model.inbox.draft != nil {
+            model.inbox.composeQuery = ""
+        } else {
+            model.inbox.composing = false
+        }
     }
 
     // MARK: Rows

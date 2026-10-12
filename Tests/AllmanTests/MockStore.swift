@@ -7,6 +7,7 @@ enum MockStore {
     static let profileId = "ACoAAMOCK0000000000000000000000000"
     static let slug = "mocky"
     static let groupConvId = "2-MOCKGROUP0000000000000000000000000000000000000000000=="
+    static let group3ConvId = "2-MOCKGROUP3000000000000000000000000000000000000000000=="
 
     @discardableResult
     static func make(at root: URL) throws -> URL {
@@ -38,6 +39,12 @@ enum MockStore {
                 let mine = (m + i) % 3 == 0
                 msgs.append(message(urn: "urn:li:messagingMessage:2-m\(i)-\(m)", ts: ts, fromUrn: mine ? "urn:li:fsd_profile:\(profileId)" : "urn:li:fsd_profile:\(pid)", fromName: mine ? "Mock User" : name, mine: mine, body: mine ? "Mine \(m): following up on the plan." : "\(parts[0]) says \(m): sounds good, let's do it."))
             }
+            // Thread 2 ends with their message you reacted to (a reply, for "Needs my reply"); thread 3 ends with theirs, unanswered.
+            if i == 2 || i == 3 {
+                var m = message(urn: "urn:li:messagingMessage:2-m\(i)-last", ts: Int64(last.timeIntervalSince1970 * 1000) - 1000, fromUrn: "urn:li:fsd_profile:\(pid)", fromName: name, mine: false, body: "\(parts[0]) asks: does Thursday work?")
+                if i == 2 { m["reactions"] = [["emoji": "👍", "count": 1, "hasUserReacted": true]] }
+                msgs.append(m)
+            }
             try writeConversation(account: account, convId: convId, record: record(convId: convId, pid: pid, slug: pslug, first: parts[0], last: parts[1], name: name, headline: "Role \(i) at Company \(i)", unread: unread, lastActivity: last, created: last.addingTimeInterval(-86400 * 30), total: count), messages: msgs)
             try fm.createSymbolicLink(at: account.appendingPathComponent(pslug), withDestinationURL: URL(fileURLWithPath: convId))
             try fm.createSymbolicLink(at: account.appendingPathComponent(pid), withDestinationURL: URL(fileURLWithPath: convId))
@@ -59,6 +66,16 @@ enum MockStore {
             message(urn: "urn:li:messagingMessage:2-g4", ts: base + 240_000, fromUrn: "urn:li:fsd_profile:\(profileId)", fromName: "Mock User", mine: true, body: "Great, talk soon."),
         ]
         try writeConversation(account: account, convId: groupConvId, record: rec, messages: gmsgs)
+
+        // A three-person group, older than the pair.
+        let ro = participant(pid: "ACoAAMOCKRO", slug: "ro-example", first: "Ro", last: "Example", headline: "Designer at Example Co")
+        var rec3 = record(convId: group3ConvId, pid: "ACoAAMOCKPRIYA", slug: nil, first: "Priya", last: "Example", name: "Priya Example, Theo Sample, Ro Example", headline: "Engineer at Example Co", unread: false, lastActivity: now.addingTimeInterval(-3 * 86400), created: now.addingTimeInterval(-10 * 86400), total: 2)
+        rec3["isGroup"] = true; rec3["title"] = nil; rec3["participants"] = [priya, theo, ro]
+        let b3 = Int64(now.addingTimeInterval(-3 * 86400).timeIntervalSince1970 * 1000)
+        try writeConversation(account: account, convId: group3ConvId, record: rec3, messages: [
+            message(urn: "urn:li:messagingMessage:2-h0", ts: b3, fromUrn: "urn:li:fsd_profile:ACoAAMOCKRO", fromName: "Ro Example", mine: false, body: "Three of us here."),
+            message(urn: "urn:li:messagingMessage:2-h1", ts: b3 + 60_000, fromUrn: "urn:li:fsd_profile:\(profileId)", fromName: "Mock User", mine: true, body: "Noted!"),
+        ])
         return root
     }
 

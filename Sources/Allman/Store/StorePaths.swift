@@ -44,6 +44,13 @@ enum StorePaths {
     /// App-owned state (read watermarks, notified URNs). Kept out of the store so
     /// the CLI's git history never sees app-specific files.
     static var appSupportURL: URL {
+        // ALLMAN_APPSUPPORT: the harness and UI tests keep their labels/pins/read state
+        // out of the real Application Support folder.
+        if let env = ProcessInfo.processInfo.environment["ALLMAN_APPSUPPORT"], !env.isEmpty {
+            let dir = URL(fileURLWithPath: env, isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            return dir
+        }
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let dir = base.appendingPathComponent("Allman", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

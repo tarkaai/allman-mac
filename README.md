@@ -244,3 +244,11 @@ Settings override → `ALLMAN_BIN` → bundled `Contents/Resources/allman` → `
 
 MIT — see [LICENSE](./LICENSE). Read [RESPONSIBLE_USE.md](./RESPONSIBLE_USE.md).
 Named, like its siblings, in tribute to [Eric Allman](https://en.wikipedia.org/wiki/Eric_Allman).
+
+## UI rules and the mock-data UI run
+
+`docs/UI-RULES.md` lists the window's layout rules and how each is enforced.
+`scripts/test.sh` runs the static rule checks, the unit tests, and a mock-data UI run:
+the suite launches a second copy of the app on a synthetic store with the fake CLI and
+the app drives its own window (real toolbar, clicks, key presses) and reports a verdict
+per rule, with screenshots. `scripts/release.sh` runs the same gate.

@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             statusItem = StatusItemController(model: model)
             model.openInboxWindow = { Self.openInboxScene() }
             DebugSnapshots.runIfRequested()
+            UIRuleChecks.runIfRequested()
         }
         Task { @MainActor in await AppModel.shared.bootstrap() }
 

@@ -46,6 +46,7 @@ struct SettingsSidebar: View {
         }
         .listStyle(.sidebar)
         .contentMargins(.top, 0, for: .scrollContent)
+        .scrollEdgeEffectStyle(.soft, for: .top)
     }
 }
 
@@ -61,6 +62,7 @@ struct SettingsDetail: View {
                 GeneralSettingsView(section: section)
             }
         }
+        .scrollEdgeEffectStyle(.soft, for: .top)
         .navigationTitle("")
         .toolbar {
             ToolbarItem(placement: .navigation) {

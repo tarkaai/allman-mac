@@ -57,6 +57,8 @@ git fetch origin main --quiet
 [[ -z "$(git ls-remote --tags origin "refs/tags/$tag")" ]] || die "tag $tag already exists on origin"
 
 # --- tests -------------------------------------------------------------------
+log "ui rules"
+scripts/check-rules.sh
 xcodegen generate --quiet
 if [[ $skip_tests = 0 ]]; then
   log "test"

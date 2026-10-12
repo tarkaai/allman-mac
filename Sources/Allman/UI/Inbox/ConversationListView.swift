@@ -9,6 +9,9 @@ struct ConversationListView: View {
     @FocusState private var searchFocused: Bool
     /// Return in the compose search picks the best match.
     @State private var composeSubmit = 0
+    /// How far above the visible edge a `.top`-anchored scroll lands (learned), and the last such scroll.
+    @State private var topBias: CGFloat = 0
+    @State private var lastTopScroll: (id: String, bias: CGFloat)?
 
     var body: some View {
         @Bindable var inbox = model.inbox
@@ -17,7 +20,7 @@ struct ConversationListView: View {
         let pins = inbox.pinnedInView
         let showPins = !pins.isEmpty && !inbox.isSearching
         VStack(spacing: 0) {
-            InboxBar()
+            InboxBar().accessibilityElement(children: .contain).uiProbe("inbox-bar")
             if inbox.composing {
                 SearchField(text: $inbox.composeQuery, focused: $searchFocused, prompt: "To: a name, or linkedin.com/in/…", onSubmit: { composeSubmit += 1 }, onCancel: { inbox.composing = false })
                     .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 8)
@@ -25,6 +28,7 @@ struct ConversationListView: View {
             } else {
                 SearchField(text: $inbox.searchText, focused: $searchFocused)
                     .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 8)
+                    .uiProbe("search-field")
             }
             Group {
                 if inbox.composing {
@@ -41,6 +45,7 @@ struct ConversationListView: View {
                     List(selection: $inbox.sidebarSelection) {
                         if showPins {
                             PinnedGrid(pins: pins)
+                                .accessibilityElement(children: .contain).uiProbe("pinned-grid")
                                 .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 6, trailing: 8))
                                 .listRowSeparator(.hidden)
                                 .selectionDisabled()
@@ -72,6 +77,7 @@ struct ConversationListView: View {
                     .listStyle(.sidebar)
                     .contentMargins(.top, 0, for: .scrollContent)
                     .scrollEdgeEffectStyle(.soft, for: .top)
+                    .uiProbe("conversation-list", always: true)
                     .focused($listFocused)
                     .onKeyPress(.return) { inbox.requestFocus(.composer); return .handled }
                     .onKeyPress(.space) { inbox.requestFocus(.composer); return .handled }
@@ -81,14 +87,37 @@ struct ConversationListView: View {
                     }
                     // Keyboard moves (⌘↑/↓, j/k, next unread) keep the selected row on screen.
                     .onChange(of: inbox.selectedConvId) { _, id in
+                        if UIProbeRegistry.enabled { NSLog("list: selection → \(id?.prefix(12) ?? "nil") inFiltered=\(id.map { i in inbox.filtered.contains { $0.record.convId == i } } ?? false)") }
                         guard let id, inbox.filtered.contains(where: { $0.record.convId == id }) else { return }
-                        // No anchor = the least movement that makes the row visible (none when it already is).
-                        // Rows below the fold are only estimated until laid out, so a second pass lands exactly.
-                        withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(id) }
+                        reveal(id, proxy)
                         Task { @MainActor in
-                            try? await Task.sleep(for: .milliseconds(220))
-                            guard inbox.selectedConvId == id else { return }
-                            proxy.scrollTo(id)
+                            // Rows re-populate after an inbox switch (and the list may restore an old
+                            // offset afterwards); a later pass lands once that has settled.
+                            for ms in [220, 400] {
+                                try? await Task.sleep(for: .milliseconds(ms))
+                                guard inbox.selectedConvId == id else { return }
+                                reveal(id, proxy)
+                            }
+                        }
+                    }
+                    // The list is rebuilt when an inbox goes from empty to populated; a selection made
+                    // in the same beat is no "change" to observe, so land on it here too.
+                    .onAppear {
+                        guard let id = inbox.selectedConvId, inbox.filtered.contains(where: { $0.record.convId == id }) else { return }
+                        Task { @MainActor in
+                            for ms in [50, 250, 450] {
+                                try? await Task.sleep(for: .milliseconds(ms))
+                                guard inbox.selectedConvId == id else { return }
+                                reveal(id, proxy)
+                            }
+                        }
+                    }
+                    // A different inbox starts at its top.
+                    .onChange(of: inbox.filter) { _, _ in
+                        guard let first = inbox.filtered.first?.record.convId, inbox.selectedConvId == nil else { return }
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(150))
+                            proxy.scrollTo(first, anchor: .top)
                         }
                     }
                     }
@@ -107,12 +136,48 @@ struct ConversationListView: View {
         .sheet(item: Binding(get: { inbox.renamingLabel }, set: { inbox.renamingLabel = $0 })) { RenameLabelSheet(label: $0).environment(model) }
     }
 
+    /// Scroll only when the row is not fully on screen, and then only to the nearer edge —
+    /// the least movement, and none at all when it is already visible. Visibility comes
+    /// from the rows' live AppKit frames (a List recycles cells without `onDisappear`,
+    /// so SwiftUI-side bookkeeping goes stale). A `.top`-anchored scroll lands a fixed
+    /// distance above the visible edge on macOS 26 (the column's safe-area inset leaks
+    /// into the arithmetic); the error is measured once and compensated from then on.
+    private func reveal(_ id: String, _ proxy: ScrollViewProxy) {
+        let inbox = model.inbox
+        guard let list = UIProbeRegistry.first("conversation-list") else { if UIProbeRegistry.enabled { NSLog("list: reveal \(id.prefix(12)) no list probe") }; return }
+        let row = UIProbeRegistry.first("row-\(id)")
+        if UIProbeRegistry.enabled { NSLog("list: reveal \(id.prefix(12)) row=\(row.map { "\(Int($0.minY))…\(Int($0.maxY))" } ?? "nil") list=\(Int(list.minY))…\(Int(list.maxY)) bias=\(Int(topBias))") }
+        if let r = row, r.minY >= list.minY - 0.5, r.maxY <= list.maxY + 0.5 { lastTopScroll = nil; return }
+        let above: Bool
+        if let r = row {
+            above = r.minY < list.minY
+            // A previous top-anchored scroll for this row landed off by this much: learn the bias.
+            if above, let used = lastTopScroll, used.id == id { topBias = used.bias + (list.minY - r.minY) }
+        } else {
+            // Not materialized: above or below everything that is.
+            let idx = inbox.filtered.firstIndex { $0.record.convId == id } ?? 0
+            let shown = UIProbeRegistry.liveIds(prefix: "row-").compactMap { k in inbox.filtered.firstIndex { "row-\($0.record.convId)" == k } }
+            above = idx < (shown.min() ?? Int.max)
+        }
+        if above {
+            let rowH = row?.height ?? 48
+            let span = max(1, list.height - rowH)
+            let anchor = UnitPoint(x: 0, y: min(0.9, max(0, topBias / span)))
+            lastTopScroll = (id, topBias)
+            withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(id, anchor: anchor) }
+        } else {
+            lastTopScroll = nil
+            withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(id, anchor: .bottom) }
+        }
+    }
+
     private func row(_ snap: ConversationSnapshot) -> some View {
         let inbox = model.inbox
         let id = snap.record.convId
         return ConversationRow(snapshot: snap, unreadCount: inbox.unreadCount(snap))
             .tag(id)
             .id(id)
+
             .contextMenu { ConversationActions(convId: id, asMenu: true) }
             // Trackpad gestures, Mail-style: swipe right to read/pin, left to archive/snooze/label.
             .swipeActions(edge: .leading, allowsFullSwipe: true) {
@@ -220,6 +285,8 @@ struct ProfileHeader: View {
         .padding(.horizontal, 12).padding(.vertical, 10)
         .frame(maxWidth: .infinity)
         .background(Color.primary.opacity(0.04))
+        .accessibilityElement(children: .contain)
+        .uiProbe("profile-header")
     }
 
     private func statusColor(_ status: SyncEngine.Status) -> Color {
@@ -457,7 +524,7 @@ struct ConversationRow: View {
         let snooze = org.snooze(r.convId)
         let hasNote = !org.note(r.convId).isEmpty
         HStack(alignment: .top, spacing: 10) {
-            AvatarView(url: r.avatarURL, name: r.displayName, size: 40)
+            ConversationAvatar(record: r, size: 40)
                 .overlay(alignment: .bottomTrailing) {
                     // Which messenger this thread lives on (LinkedIn today).
                     MessengerBadge(size: 11)
@@ -526,6 +593,8 @@ struct ConversationRow: View {
             }
         }
         .onHover { hovering = $0 }
+        .accessibilityElement(children: .contain)
+        .uiProbe("row-\(r.convId)", always: true)
     }
 }
 
@@ -632,7 +701,7 @@ struct PinnedGrid: View {
                 let selected = inbox.selectedConvId == id
                 Button { inbox.select(id) } label: {
                     VStack(spacing: 4) {
-                        AvatarView(url: snap.record.avatarURL, name: snap.record.displayName, size: 56)
+                        ConversationAvatar(record: snap.record, size: 56)
                             .overlay(Circle().stroke(selected ? Color.accentColor : .clear, lineWidth: 2.5).padding(-3))
                             .overlay(alignment: .topTrailing) {
                                 if unread > 0 {
@@ -646,7 +715,7 @@ struct PinnedGrid: View {
                                         .offset(x: 4, y: -2)
                                 }
                             }
-                        Text(snap.record.firstName?.isEmpty == false ? snap.record.firstName! : snap.record.displayName)
+                        Text(snap.record.shortName)
                             .font(unread > 0 ? AFont.metaStrong : AFont.meta)
                             .lineLimit(1)
                             .foregroundStyle(.primary)
@@ -657,6 +726,7 @@ struct PinnedGrid: View {
                 }
                 .buttonStyle(.plain)
                 .help(snap.record.displayName)
+                .uiProbe("pin-\(id)")
                 // Not `.contextMenu`: inside a List row it applies to the whole row (every pin).
                 .overlay(RightClickMenu {
                     var items = [RightClickMenu.Item("Unpin \(snap.record.displayName)") { inbox.togglePin(id) }]

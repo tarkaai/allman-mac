@@ -163,11 +163,29 @@ enum DebugSnapshots {
                 }
                 let hadInspector = model.inspectorVisible
                 if model.inbox.selectedConvId == nil, let conv = target?.record.convId { model.inbox.select(conv) }
-                model.inspectorVisible = true
-                try? await Task.sleep(for: .seconds(1.5))
+                model.toggleInspector()
+                for ms in [40, 120, 220, 320] {
+                    try? await Task.sleep(for: .milliseconds(ms))
+                    capture(w, to: out.appendingPathComponent("inspector-open-\(ms)ms.png"))
+                }
+                try? await Task.sleep(for: .seconds(1))
                 capture(w, to: out.appendingPathComponent("inbox-inspector.png"))
+                model.toggleInspector()
+                for ms in [40, 120, 220, 320] {
+                    try? await Task.sleep(for: .milliseconds(ms))
+                    capture(w, to: out.appendingPathComponent("inspector-close-\(ms)ms.png"))
+                }
                 model.inspectorVisible = hadInspector
                 try? await Task.sleep(for: .milliseconds(600))
+                // Sidebar collapsed (ALLMAN_SNAPSHOT_CHROME=1): the chrome bar moves to the detail, same order.
+                if ProcessInfo.processInfo.environment["ALLMAN_SNAPSHOT_CHROME"] != nil {
+                    sendKeyEquivalent("s", modifiers: [.control, .command], to: w)
+                    try? await Task.sleep(for: .seconds(1))
+                    capture(w, to: out.appendingPathComponent("chrome-collapsed.png"))
+                    sendKeyEquivalent("s", modifiers: [.control, .command], to: w)
+                    try? await Task.sleep(for: .seconds(1))
+                    capture(w, to: out.appendingPathComponent("chrome-expanded.png"))
+                }
                 model.debugShowTimes = true
                 try? await Task.sleep(for: .seconds(1))
                 capture(w, to: out.appendingPathComponent("inbox-times.png"))
@@ -299,6 +317,14 @@ enum DebugSnapshots {
         }
     }
 
+    /// Drives a keyboard shortcut the way a key press would (menu and SwiftUI shortcuts both see it).
+    static func sendKeyEquivalent(_ chars: String, modifiers: NSEvent.ModifierFlags, to window: NSWindow) {
+        guard let ev = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: modifiers, timestamp: ProcessInfo.processInfo.systemUptime,
+                                        windowNumber: window.windowNumber, context: nil, characters: chars, charactersIgnoringModifiers: chars,
+                                        isARepeat: false, keyCode: 0) else { return }
+        if !window.performKeyEquivalent(with: ev) { NSApp.sendEvent(ev) }
+    }
+
     private typealias WindowImageFn = @convention(c) (CGRect, UInt32, UInt32, UInt32) -> Unmanaged<CGImage>?
 
     /// The SDK no longer exposes CGWindowListCreateImage, but the OS still ships it;
@@ -308,7 +334,7 @@ enum DebugSnapshots {
         return unsafeBitCast(sym, to: WindowImageFn.self)
     }()
 
-    private static func capture(_ window: NSWindow, to url: URL) {
+    static func capture(_ window: NSWindow, to url: URL) {
         let id = UInt32(window.windowNumber)
         var image: CGImage?
         if let fn = windowImage {

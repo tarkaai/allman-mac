@@ -17,6 +17,7 @@ struct InsightsSidebar: View {
         }
         .listStyle(.sidebar)
         .contentMargins(.top, 0, for: .scrollContent)
+        .scrollEdgeEffectStyle(.soft, for: .top)
     }
 }
 
@@ -78,6 +79,7 @@ struct InsightsView: View {
         .frame(maxWidth: 760, alignment: .leading)
         .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .scrollEdgeEffectStyle(.soft, for: .top)
         .navigationTitle("")
         .toolbar {
             ToolbarItem(placement: .navigation) {

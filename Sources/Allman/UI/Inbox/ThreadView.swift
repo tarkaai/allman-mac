@@ -21,17 +21,20 @@ struct ThreadView: View {
     static let pageSize = 300
     /// A search hit the thread just jumped to; its bubble glows briefly.
     @State private var highlightedUrn: String?
-    /// Scrolled to (near) the newest message. A width change (inspector, resize) re-pins when true.
+    /// Scrolled to (near) the newest message. A width change (panel, resize) re-pins when true.
     @State private var atBottom = true
+    /// While set, a pane-width change is in progress and the bottom is held, whatever the
+    /// intermediate geometry says (rows re-wrap before the new width is reported).
+    @State private var holdBottomUntil = Date.distantPast
 
     private enum Row: Identifiable {
         case stamp(Date)
-        case message(Message, showsTail: Bool)
+        case message(Message, showsTail: Bool, sender: String?)
         case outgoing(InboxModel.OutgoingMessage)
         var id: String {
             switch self {
             case .stamp(let d): return "stamp-\(d.timeIntervalSince1970)"
-            case .message(let m, _): return m.id
+            case .message(let m, _, _): return m.id
             case .outgoing(let o): return "outgoing-\(o.id)"
             }
         }
@@ -71,11 +74,12 @@ struct ThreadView: View {
                             switch row {
                             case .stamp(let date):
                                 TimeStamp(date: date).padding(.vertical, 10)
-                            case .message(let msg, let tail):
+                            case .message(let msg, let tail, let sender):
                                 MessageRow(
                                     message: msg,
                                     contactName: snapshot.record.displayName,
                                     showsTail: tail,
+                                    senderName: sender,
                                     reveal: model.debugShowTimes ? Self.timeGutter : reveal,
                                     maxWidth: maxBubble,
                                     media: inbox.media[convId] ?? [:],
@@ -104,18 +108,36 @@ struct ThreadView: View {
                                 .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .identity))
                             }
                         }
-                        Color.clear.frame(height: 1).id("bottom")
+                        Color.clear.frame(height: 1).id("bottom").uiProbe("thread-bottom")
                     }
                     .padding(.horizontal, 16).padding(.vertical, 10)
                 }
                 .contentMargins(.top, 14, for: .scrollContent)
                 .scrollEdgeEffectStyle(.soft, for: .top)
-                .onScrollGeometryChange(for: Bool.self) { g in
-                    g.contentOffset.y + g.containerSize.height >= g.contentSize.height - 48
-                } action: { _, near in atBottom = near }
+                .onScrollGeometryChange(for: ScrollGeometry.self) { $0 } action: { old, new in
+                    // Only the user's scrolling moves this flag. While the pane changes width
+                    // (panel, resize) rows re-wrap and the offset is in flux; the latched value
+                    // keeps the bottom anchored through the change.
+                    // Content re-wraps (new height) before the container reports its new width.
+                    guard Date() >= holdBottomUntil, old.containerSize == new.containerSize, old.contentSize == new.contentSize else { return }
+                    atBottom = new.visibleRect.maxY >= new.contentSize.height - 48
+                    if UIProbeRegistry.enabled { NSLog("thread: geometry visible=\(Int(new.visibleRect.minY))…\(Int(new.visibleRect.maxY)) content=\(Int(new.contentSize.height)) container=\(Int(new.containerSize.width))x\(Int(new.containerSize.height)) atBottom=\(atBottom)") }
+                }
                 .onChange(of: geo.size.width) { _, _ in
-                    // Bubbles re-wrap when the pane changes width; stay on the newest message if we were there.
-                    if atBottom { slideToBottom(proxy, .easeInOut(duration: 0.2)) }
+                    // Rows re-wrap while the pane animates; snap (no animation of our own) to the
+                    // newest message over the next frames so the bottom stays in view throughout.
+                    if UIProbeRegistry.enabled { NSLog("thread: width change atBottom=\(atBottom)") }
+                    guard atBottom else { return }
+                    let alreadyHolding = Date() < holdBottomUntil
+                    holdBottomUntil = Date().addingTimeInterval(0.7)
+                    guard !alreadyHolding else { return }
+                    Task { @MainActor in
+                        while Date() < holdBottomUntil {
+                            proxy.scrollTo("bottom", anchor: .bottom)
+                            try? await Task.sleep(for: .milliseconds(40))
+                        }
+                        proxy.scrollTo("bottom", anchor: .bottom)
+                    }
                 }
                 // Bottom-anchored, not scrolled-to: the scroll view is rebuilt once the
                 // thread has content, so its initial offset is the newest message, and
@@ -124,7 +146,10 @@ struct ThreadView: View {
                 .id(messages.isEmpty ? "empty" : "loaded")
                 .scrollPosition($position)
                 .defaultScrollAnchor(.bottom)
-                .defaultScrollAnchor(settling ? .bottom : nil, for: .sizeChanges)
+                // While at the newest message, any size change (a panel opening, the window
+                // resizing, the composer growing) keeps it there — anchored, not re-scrolled.
+                .defaultScrollAnchor(settling || atBottom ? .bottom : nil, for: .sizeChanges)
+                .uiProbe("thread-scroll")
                 .background(TimeRevealGesture(reveal: $reveal, maxReveal: Self.timeGutter))
                 .task(id: messages.isEmpty) {
                     // Pin the bottom while the first layout settles, then hand over to animated scrolling.
@@ -153,7 +178,7 @@ struct ThreadView: View {
                 }
             }
             }
-            ComposerView(convId: convId, firstName: snapshot.record.firstName ?? snapshot.record.displayName)
+            ComposerView(convId: convId, firstName: snapshot.record.shortName)
         }
         .navigationTitle("")
     }
@@ -213,7 +238,13 @@ struct ThreadView: View {
             }
             let next = i + 1 < messages.count ? messages[i + 1] : nil
             let tail = next == nil || next!.isFromMe != m.isFromMe || next!.timestamp - m.timestamp > 60 * 60 * 1000
-            out.append(.message(m, showsTail: tail))
+            // In a group, name the sender at the start of each run from someone else.
+            var sender: String?
+            if snapshot.record.isGroupThread, !m.isFromMe {
+                let newRun = prev == nil || prev!.isFromMe || prev!.fromUrn != m.fromUrn || m.timestamp - prev!.timestamp > 60 * 60 * 1000
+                if newRun { sender = snapshot.record.participant(for: m)?.displayName ?? m.fromName }
+            }
+            out.append(.message(m, showsTail: tail, sender: sender))
             prev = m
         }
         // Just-sent messages ride at the end, under today's divider if the thread's last day isn't today.
@@ -237,13 +268,15 @@ struct PersonHeader: View {
     var body: some View {
         let r = snapshot.record
         let conn = model.inbox.connection(for: r)
-        let brief = conn.map { [$0.title, $0.company].compactMap { $0 }.joined(separator: " at ") }.flatMap { $0.isEmpty ? nil : $0 } ?? r.headline
+        let brief = r.isGroupThread
+            ? "Group · \(r.members.count) people"
+            : (conn.map { [$0.title, $0.company].compactMap { $0 }.joined(separator: " at ") }.flatMap { $0.isEmpty ? nil : $0 } ?? r.headline)
         PageHeader(
-            avatarURL: r.avatarURL ?? conn?.profilePictureUrl.flatMap(URL.init(string:)),
+            avatar: AnyView(ConversationAvatar(record: r, size: 34, fallbackURL: conn?.profilePictureUrl.flatMap(URL.init(string:)))),
             title: r.displayName,
             titleAccessory: AnyView(HStack(spacing: 5) {
                 MessengerBadge(size: 13)
-                if let d = degree(r.distance) { Text(d).font(.caption2.weight(.medium)).padding(.horizontal, 5).padding(.vertical, 1).background(.quaternary, in: Capsule()) }
+                if !r.isGroupThread, let d = degree(r.distance) { Text(d).font(.caption2.weight(.medium)).padding(.horizontal, 5).padding(.vertical, 1).background(.quaternary, in: Capsule()) }
             }),
             line1: brief,
             onTap: { model.toggleInspector() }
@@ -285,6 +318,8 @@ struct MessageRow: View {
     let message: Message
     let contactName: String
     let showsTail: Bool
+    /// Shown above the bubble in group threads at the start of someone's run.
+    var senderName: String? = nil
     let reveal: CGFloat
     let maxWidth: CGFloat
     var media: [String: URL] = [:]
@@ -308,6 +343,11 @@ struct MessageRow: View {
         let mine = message.isFromMe
         let hasReactions = !message.reactions.isEmpty
         VStack(alignment: .trailing, spacing: 3) {
+        if let senderName, !mine {
+            HStack { Text(senderName).font(AFont.micro).foregroundStyle(.secondary).padding(.leading, 12); Spacer(minLength: 0) }
+                .padding(.top, 4)
+                .uiProbe("sender-caption")
+        }
         HStack(alignment: .bottom, spacing: 0) {
             if mine { Spacer(minLength: 0) }
             bubble

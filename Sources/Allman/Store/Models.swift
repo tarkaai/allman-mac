@@ -18,7 +18,45 @@ struct SyncState: Codable, Hashable {
     var fullyBackfilled: Bool?
 }
 
-/// One conversation = one contact (allman only stores 1:1 threads).
+/// One participant of a group thread (everyone except the signed-in user).
+struct Participant: Codable, Hashable, Identifiable {
+    var id: String { profileId ?? profileUrn ?? name ?? "" }
+    let profileId: String?
+    let profileUrn: String?
+    /// `urn:li:msg_messagingParticipant:…` — what some message `fromUrn`s carry.
+    let backendUrn: String?
+    let slug: String?
+    let firstName: String?
+    let lastName: String?
+    let name: String?
+    let headline: String?
+    let profileUrl: String?
+    let profilePictures: [ProfilePicture]?
+    let distance: String?
+    let pronoun: String?
+    let isPremium: Bool?
+    let isVerified: Bool?
+
+    var displayName: String {
+        let n = (name ?? "").trimmingCharacters(in: .whitespaces)
+        if !n.isEmpty { return n }
+        let joined = [firstName, lastName].compactMap { $0 }.joined(separator: " ").trimmingCharacters(in: .whitespaces)
+        return joined.isEmpty ? (slug ?? profileId ?? "Someone") : joined
+    }
+
+    var avatarURL: URL? { ConversationRecord.pick(profilePictures) }
+
+    /// True when a message's `fromUrn` is this person, whichever URN form the CLI stored.
+    func matches(fromUrn: String?) -> Bool {
+        guard let fromUrn, !fromUrn.isEmpty else { return false }
+        if let u = profileUrn, u == fromUrn { return true }
+        if let b = backendUrn, b == fromUrn { return true }
+        if let id = profileId, !id.isEmpty, fromUrn.hasSuffix(id) { return true }
+        return false
+    }
+}
+
+/// One conversation: a contact (1:1) or, when `isGroup`, several participants.
 struct ConversationRecord: Codable, Identifiable, Hashable {
     var id: String { convId }
 
@@ -48,25 +86,61 @@ struct ConversationRecord: Codable, Identifiable, Hashable {
     let syncState: SyncState?
     /// ISO timestamp of the last time the CLI refreshed this record from LinkedIn.
     let fetchedAt: String?
+    // Group threads (allman-cli ≥ 0.6): absent on 1:1 records.
+    let isGroup: Bool?
+    /// LinkedIn's group title, when the members named the thread.
+    let title: String?
+    /// Everyone in the thread except the signed-in user, in LinkedIn's order.
+    let participants: [Participant]?
+
+    var isGroupThread: Bool { isGroup == true || (participants?.count ?? 0) > 1 }
+    var members: [Participant] { participants ?? [] }
 
     var displayName: String {
+        if isGroupThread {
+            let t = (title ?? "").trimmingCharacters(in: .whitespaces)
+            if !t.isEmpty { return t }
+            let names = members.map(\.displayName).filter { !$0.isEmpty }
+            if !names.isEmpty { return names.joined(separator: ", ") }
+        }
         let n = (name ?? "").trimmingCharacters(in: .whitespaces)
         if !n.isEmpty { return n }
         let joined = [firstName, lastName].compactMap { $0 }.joined(separator: " ").trimmingCharacters(in: .whitespaces)
         return joined.isEmpty ? (slug ?? convId) : joined
     }
 
-    /// Best `allman send` / `allman react` target: slug when known, else the conversation URN.
-    var sendTarget: String { slug ?? convUrn ?? backendUrn ?? convId }
+    /// Short form for tight spots (pins): the group's first names, else the person's first name.
+    var shortName: String {
+        if isGroupThread, (title ?? "").isEmpty {
+            let firsts = members.compactMap { $0.firstName?.isEmpty == false ? $0.firstName : $0.displayName.split(separator: " ").first.map(String.init) }
+            if !firsts.isEmpty { return firsts.joined(separator: ", ") }
+        }
+        return firstName?.isEmpty == false ? firstName! : displayName
+    }
 
-    var avatarURL: URL? {
-        guard let pics = profilePictures, !pics.isEmpty else { return nil }
-        // Prefer ~200px for list rows; the largest is overkill for a 36pt avatar.
+    /// Who sent a message, for group threads (nil for 1:1 or when unknown).
+    func participant(for message: Message) -> Participant? {
+        guard isGroupThread, !message.isFromMe else { return nil }
+        if let p = members.first(where: { $0.matches(fromUrn: message.fromUrn) }) { return p }
+        if let n = message.fromName, let p = members.first(where: { $0.displayName == n }) { return p }
+        return nil
+    }
+
+    /// Best `allman send` / `allman react` target: slug when known, else the conversation id
+    /// (a group has no slug alias; the CLI resolves the bare `2-…` id).
+    var sendTarget: String { isGroupThread ? convId : (slug ?? convUrn ?? backendUrn ?? convId) }
+
+    var avatarURL: URL? { isGroupThread ? nil : Self.pick(profilePictures) }
+
+    /// Prefer ~200px for list rows; the largest is overkill for a 36pt avatar.
+    static func pick(_ pics: [ProfilePicture]?) -> URL? {
+        guard let pics, !pics.isEmpty else { return nil }
         let sorted = pics.sorted { abs($0.width - 200) < abs($1.width - 200) }
         return sorted.first.flatMap { URL(string: $0.url) }
     }
 
     var linkedInProfileURL: URL? {
+        if isGroupThread { return nil }
         if let slug { return URL(string: "https://www.linkedin.com/in/\(slug)/") }
         if let profileUrl { return URL(string: profileUrl) }
         return nil

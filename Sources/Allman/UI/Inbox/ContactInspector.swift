@@ -12,13 +12,13 @@ struct ContactInspector: View {
         let inbox = model.inbox
         let r = snapshot.record
         let conn = inbox.connection(for: r)
-        VStack(spacing: 0) {
-            // Fixed on the toolbar line, glass behind it: picture, name, pronouns, degree, verified, close (i).
-            headerRow(r, conn)
-                .padding(.leading, 16).padding(.trailing, 48).padding(.top, 8).padding(.bottom, 8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                if r.isGroupThread {
+                    members(r)
+                    organize(r.convId)
+                    links(r)
+                } else {
                     about(r, conn)
                     organize(r.convId)
                     if let conn, conn.isEnriched {
@@ -28,39 +28,45 @@ struct ContactInspector: View {
                     }
                     links(r)
                 }
-                .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 16)
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .contentMargins(.top, 0, for: .scrollContent)
-            .scrollEdgeEffectStyle(.soft, for: .top)
+            .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 16)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .ignoresSafeArea(.container, edges: .top)
-        .toolbar {
-            // The toolbar strip sits over the header row, so the close button lives there to stay clickable.
-            ToolbarItem(placement: .primaryAction) {
-                Button { model.toggleInspector() } label: { Label("Hide Contact Details", systemImage: "info.circle.fill") }
-                    .help("Hide contact details (⌥⌘I)")
-            }
-        }
+        .scrollEdgeEffectStyle(.soft, for: .top)
+        .uiProbe("inspector-body")
+        // The header is a toolbar item above this column (MessengerDetail); the body
+        // scrolls under the toolbar band with the same soft fade as every column.
+        .background(Color.primary.opacity(0.035))
+        .accessibilityElement(children: .contain)
+        .uiProbe("inspector-column")
     }
 
     // MARK: Sections
 
-    private func headerRow(_ r: ConversationRecord, _ conn: Connection?) -> some View {
-            HStack(alignment: .center, spacing: 10) {
-                AvatarView(url: r.avatarURL ?? conn?.profilePictureUrl.flatMap(URL.init(string:)), name: r.displayName, size: 36)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(r.displayName).font(AFont.title).lineLimit(1)
-                    HStack(spacing: 6) {
-                        if let p = conn?.pronounText ?? pronoun(r.pronoun) { Text(p).font(AFont.meta).foregroundStyle(.secondary) }
-                        if let d = distance(r.distance) { badge(d) }
-                        if r.isPremium == true { badge("Premium") }
-                        if r.isVerified == true { Image(systemName: "checkmark.seal.fill").font(AFont.meta).foregroundStyle(.blue).help("Verified") }
+    /// Everyone in a group thread, with their headline.
+    private func members(_ r: ConversationRecord) -> some View {
+        section("\(r.members.count) people") {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(r.members) { p in
+                    HStack(spacing: 8) {
+                        AvatarView(url: p.avatarURL, name: p.displayName, size: 28)
+                        VStack(alignment: .leading, spacing: 1) {
+                            HStack(spacing: 5) {
+                                Text(p.displayName).font(AFont.bodyMedium).lineLimit(1)
+                                if let d = PersonBits.distance(p.distance) { PersonBits.badge(d) }
+                                if p.isVerified == true { Image(systemName: "checkmark.seal.fill").font(AFont.smallIcon).foregroundStyle(.blue) }
+                            }
+                            if let h = p.headline, !h.isEmpty { Text(h).font(AFont.meta).foregroundStyle(.secondary).lineLimit(2) }
+                        }
+                        Spacer(minLength: 0)
+                        if let slug = p.slug, let url = URL(string: "https://www.linkedin.com/in/\(slug)/") {
+                            Button { NSWorkspace.shared.open(url) } label: { Image(systemName: "arrow.up.right.square") }
+                                .buttonStyle(.plain).foregroundStyle(.secondary).help("LinkedIn profile")
+                        }
                     }
                 }
-                Spacer(minLength: 0)
             }
-            .frame(height: 36)
+        }
     }
 
     private func about(_ r: ConversationRecord, _ conn: Connection?) -> some View {
@@ -217,23 +223,8 @@ struct ContactInspector: View {
         }
     }
 
-    private func badge(_ text: String) -> some View {
-        Text(text).font(AFont.microStrong).padding(.horizontal, 5).padding(.vertical, 1).background(.quaternary, in: Capsule())
-    }
 
-    private func distance(_ d: String?) -> String? {
-        switch d {
-        case "DISTANCE_1": return "1st"
-        case "DISTANCE_2": return "2nd"
-        case "DISTANCE_3": return "3rd"
-        default: return nil
-        }
-    }
 
-    private func pronoun(_ p: String?) -> String? {
-        guard let p, !p.isEmpty else { return nil }
-        return p.lowercased().split(separator: "_").joined(separator: "/")
-    }
 }
 
 
@@ -262,5 +253,55 @@ struct FlowLayout: Layout {
             x += s.width + spacing
             rowH = max(rowH, s.height)
         }
+    }
+}
+
+/// Small shared bits for describing a person.
+enum PersonBits {
+    static func badge(_ text: String) -> some View {
+        Text(text).font(AFont.microStrong).padding(.horizontal, 5).padding(.vertical, 1).background(.quaternary, in: Capsule())
+    }
+
+    static func distance(_ d: String?) -> String? {
+        switch d {
+        case "DISTANCE_1": return "1st"
+        case "DISTANCE_2": return "2nd"
+        case "DISTANCE_3": return "3rd"
+        default: return nil
+        }
+    }
+
+    static func pronoun(_ p: String?) -> String? {
+        guard let p, !p.isEmpty else { return nil }
+        return p.lowercased().split(separator: "_").joined(separator: "/")
+    }
+}
+
+/// The panel's header, on its toolbar row: picture, name, pronouns, degree,
+/// Premium, verified. Fixed — the panel body scrolls under it.
+struct InspectorHeader: View {
+    @Environment(AppModel.self) private var model
+    let snapshot: ConversationSnapshot
+
+    var body: some View {
+        let r = snapshot.record
+        let conn = model.inbox.connection(for: r)
+        HStack(alignment: .center, spacing: 10) {
+            ConversationAvatar(record: r, size: 34, fallbackURL: conn?.profilePictureUrl.flatMap(URL.init(string:)))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(r.displayName).font(AFont.title).lineLimit(1)
+                HStack(spacing: 6) {
+                    if r.isGroupThread {
+                        Text("Group · \(r.members.count) people").font(AFont.meta).foregroundStyle(.secondary)
+                    } else {
+                        if let p = conn?.pronounText ?? PersonBits.pronoun(r.pronoun) { Text(p).font(AFont.meta).foregroundStyle(.secondary) }
+                        if let d = PersonBits.distance(r.distance) { PersonBits.badge(d) }
+                        if r.isPremium == true { PersonBits.badge("Premium") }
+                        if r.isVerified == true { Image(systemName: "checkmark.seal.fill").font(AFont.meta).foregroundStyle(.blue).help("Verified") }
+                    }
+                }
+            }
+        }
+        .uiProbe("inspector-header")
     }
 }

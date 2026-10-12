@@ -34,6 +34,8 @@ struct NetworkSidebar: View {
                 }
             }
             .listStyle(.sidebar)
+            .scrollEdgeEffectStyle(.soft, for: .top)
+            .scrollEdgeEffectStyle(.soft, for: .top)
             .contentMargins(.top, 0, for: .scrollContent)
             if let job = net.job {
                 HStack(spacing: 8) {
@@ -71,6 +73,7 @@ struct NetworkDetail: View {
         Group {
             if net.tab.isConnectionsList { connectionsTable(inbox) } else { invitationsTable(net) }
         }
+        .scrollEdgeEffectStyle(.soft, for: .top)
         .navigationTitle("")
         .toolbar {
             ToolbarItem(placement: .navigation) {

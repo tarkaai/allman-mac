@@ -61,7 +61,7 @@ struct ImageAttachment: View {
             }
         }
         .task(id: url) {
-            image = await Task.detached { NSImage(contentsOf: url) }.value
+            image = ImageCache.shared.local(url)
         }
     }
 }

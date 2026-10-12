@@ -1,30 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// Tiny memory cache so list scrolling doesn't refetch the same CDN image.
-@MainActor
-final class ImageCache {
-    static let shared = ImageCache()
-    private let cache = NSCache<NSURL, NSImage>()
-    private var inflight: [URL: Task<NSImage?, Never>] = [:]
-
-    init() { cache.countLimit = 600 }
-
-    func image(for url: URL) async -> NSImage? {
-        if let hit = cache.object(forKey: url as NSURL) { return hit }
-        if let t = inflight[url] { return await t.value }
-        let task = Task<NSImage?, Never> {
-            guard let (data, _) = try? await URLSession.shared.data(from: url), let img = NSImage(data: data) else { return nil }
-            return img
-        }
-        inflight[url] = task
-        let img = await task.value
-        inflight[url] = nil
-        if let img { cache.setObject(img, forKey: url as NSURL) }
-        return img
-    }
-}
-
 struct AvatarView: View {
     let url: URL?
     let name: String

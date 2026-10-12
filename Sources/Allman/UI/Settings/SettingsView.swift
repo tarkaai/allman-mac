@@ -159,6 +159,17 @@ struct GeneralSettingsView: View {
                 Text("Leave blank to use ~/.allman (or $ALLMAN_STORE). The same store the allman CLI and TUI use.")
                     .font(AFont.meta).foregroundStyle(.secondary)
             }
+            Section {
+                let usage = ImageCache.shared.diskUsage()
+                LabeledContent("Image cache") {
+                    HStack {
+                        Text("\(usage.count) pictures · \(ByteCountFormatter.string(fromByteCount: usage.bytes, countStyle: .file))").font(AFont.secondary).foregroundStyle(.secondary)
+                        Button("Clear") { ImageCache.shared.clearDisk() }.controlSize(.small)
+                    }
+                }
+                Text("Profile pictures and link previews are kept for 30 days in ~/Library/Caches/Allman. Thread media stays in the store under each conversation's media/ folder.")
+                    .font(AFont.meta).foregroundStyle(.secondary)
+            }
             }
 
             if section == .cli {

@@ -45,6 +45,22 @@ sys.exit(1 if ('"pin"' in b or 'note.text' in b) else 0)
 PY
 ok "R29 hover actions: labels · snooze · archive"
 command grep -q "struct ThreadActions" $ui/Inbox/InboxWindow.swift && ok "R21 ThreadActions on the band" || bad "R21 ThreadActions missing"
+# R36/R37: every icon button goes through IconButton (hover + its own tooltip); bar icons only as hover-wrapped menu labels.
+python3 -I - $(find $ui -name "*.swift") <<'PY' || bad "R36 icon buttons must use IconButton (hover + tooltip)"
+import sys, re
+bad = []
+for path in sys.argv[1:]:
+    if path.endswith("IconButton.swift"): continue
+    lines = open(path).read().split("\n")
+    for n, line in enumerate(lines, 1):
+        if ("BarIcon(" in line or "BandIcon(" in line) and ".iconHover()" not in line:
+            bad.append(f"{path}:{n}: bar icon outside IconButton without hover")
+        if "Button" in line and ("BarIcon(" in line or "BandIcon(" in line):
+            bad.append(f"{path}:{n}: Button wrapping a bar icon (use IconButton)")
+print("\n".join(bad)); sys.exit(1 if bad else 0)
+PY
+ok "R36 icon buttons through IconButton (hover + one tooltip each)"
+if command grep -rn "pickerStyle(.segmented)" $ui/Inbox/InboxWindow.swift >/dev/null; then bad "R37 the experience switcher must be per-button (own tooltips)"; else ok "R37 experience switcher is per-button"; fi
 # R15b: the selected conversation is highlighted edge to edge (plain list style, not the inset sidebar style).
 command grep -q "listStyle(.plain)" $ui/Inbox/ConversationListView.swift && ! command grep -q "listStyle(.sidebar)" $ui/Inbox/ConversationListView.swift && ok "R15b full-width selection (plain list)" || bad "R15b conversation list must use .plain"
 # R13: one window — no Settings scene, no extra Window scenes.

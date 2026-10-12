@@ -93,10 +93,7 @@ struct ContactInspector: View {
                                 LabelMenu(label: l)
                             }
                         }
-                        Button { inbox.showLabelPicker = true } label: {
-                            Image(systemName: "plus").font(AFont.metaStrong).frame(width: 20, height: 20).background(Color.primary.opacity(0.06), in: Circle())
-                        }
-                        .buttonStyle(.plain).help("Add label (L)")
+                        IconButton(symbol: "plus", help: "Add label (L)", size: .custom(AFont.metaStrong, 22, 22)) { inbox.showLabelPicker = true }
                     }
                 }
             }

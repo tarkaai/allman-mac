@@ -62,10 +62,13 @@ struct PeopleSearchResults: View {
             if query.trimmingCharacters(in: .whitespaces).count < 2 {
                 Text("Type a name, or paste a linkedin.com/in/… link. Your conversations and connections match as you type; LinkedIn search kicks in after three characters.")
                     .font(AFont.secondary).foregroundStyle(.secondary)
+                    .lineLimit(nil).fixedSize(horizontal: false, vertical: true)
                     .listRowSeparator(.hidden)
+                    .uiProbe("compose-instructions")
             }
         }
         .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
         .contentMargins(.top, 0, for: .scrollContent)
         .sheet(item: $connectTarget) { hit in ConnectSheet(slug: hit.slug ?? "", name: hit.name).environment(model) }
         .onAppear {
@@ -283,15 +286,15 @@ struct DraftThreadView: View {
                         HStack(spacing: 4) {
                             AvatarView(url: r.avatarURL, name: r.name, size: 16)
                             Text(r.name).font(AFont.chip)
-                            Button { model.inbox.removeDraftRecipient(r.slug) } label: { Image(systemName: "xmark").font(AFont.smallIcon) }
-                                .buttonStyle(.plain).foregroundStyle(.secondary).help("Remove")
+                            IconButton(symbol: "xmark", help: "Remove \(r.name)", size: .custom(AFont.smallIcon, 16, 16)) { model.inbox.removeDraftRecipient(r.slug) }
                         }
                         .padding(.leading, 4).padding(.trailing, 8).padding(.vertical, 3)
                         .background(Color.primary.opacity(0.06), in: Capsule())
                         .uiProbe("draft-chip-\(r.slug)")
                     }
-                    Button { model.inbox.composing = true } label: { Label("Add people", systemImage: "plus").font(AFont.chip) }
+                    Button { model.inbox.composing = true } label: { Label("Add people", systemImage: "plus").font(AFont.chip).padding(.horizontal, 6).padding(.vertical, 3) }
                         .buttonStyle(.plain).foregroundStyle(Color.accentColor)
+                        .iconHover()
                         .help("Add another recipient — two or more make this a group message")
                         .uiProbe("draft-add")
                 }

@@ -37,25 +37,24 @@ struct InboxWindow: View {
             ChromeBar()
                 .padding(.leading, Chrome.chromeLeading)
                 .frame(height: Chrome.barHeight)
-            if model.experience == .messenger, inbox.selected != nil || inbox.draft != nil {
-                // The thread's actions and the one `i`, far right, whatever the panel or sidebar do.
-                HStack(spacing: 2) {
-                    Spacer()
+            // New message (always), then the thread's actions and the one `i` — far right,
+            // whatever the panel or sidebar do.
+            HStack(spacing: 2) {
+                Spacer()
+                IconButton(symbol: "square.and.pencil", help: "New message (⌘N) — pick several people for a group", size: .band) { model.startNewMessage() }
+                    .uiProbe("compose-button")
+                if model.experience == .messenger, inbox.selected != nil || inbox.draft != nil {
                     if let id = inbox.selectedConvId, inbox.draft == nil { ThreadActions(convId: id) }
                     InspectorToggle()
                 }
-                .padding(.trailing, 12)
-                .frame(height: Chrome.barHeight)
-                .uiProbe("top-actions")
             }
+            .padding(.trailing, 12)
+            .frame(height: Chrome.barHeight)
+            .uiProbe("top-actions")
         }
         .animation(.easeInOut(duration: 0.25), value: collapsed)
         .ignoresSafeArea(.container, edges: .top)
-        .onReceive(NotificationCenter.default.publisher(for: .allmanCompose)) { _ in
-            model.experience = .messenger
-            if model.isSidebarCollapsed { model.toggleSidebar() }
-            model.inbox.composing = true
-        }
+        .onReceive(NotificationCenter.default.publisher(for: .allmanCompose)) { _ in model.startNewMessage() }
         .onReceive(NotificationCenter.default.publisher(for: .allmanSyncWindow)) { _ in choosingSyncWindow = true }
         .sheet(isPresented: $choosingSyncWindow) { SyncWindowSheet().environment(model) }
         .frame(minWidth: 900, minHeight: 560)
@@ -138,19 +137,11 @@ struct ChromeBar: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Button { model.toggleSidebar() } label: {
-                Image(systemName: model.isSidebarCollapsed ? "sidebar.leading" : "sidebar.leading")
-                    .symbolVariant(model.isSidebarCollapsed ? .none : .fill)
-                    .font(.system(size: 14, weight: .medium))
-                    .frame(width: 28, height: 26)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(model.canCollapseSidebar ? .secondary : .quaternary)
-            .disabled(!model.canCollapseSidebar)
-            .keyboardShortcut("s", modifiers: [.control, .command])
-            .help(model.canCollapseSidebar ? (model.isSidebarCollapsed ? "Show sidebar (⌃⌘S)" : "Hide sidebar (⌃⌘S)") : "Settings keeps its sidebar")
-            .uiProbe("sidebar-toggle")
+            IconButton(symbol: model.isSidebarCollapsed ? "sidebar.leading" : "sidebar.leading.fill",
+                       help: model.canCollapseSidebar ? (model.isSidebarCollapsed ? "Show sidebar (⌃⌘S)" : "Hide sidebar (⌃⌘S)") : "Settings keeps its sidebar",
+                       size: .band, tint: model.canCollapseSidebar ? nil : Color.secondary.opacity(0.4), shortcut: "s", modifiers: [.control, .command]) { model.toggleSidebar() }
+                .disabled(!model.canCollapseSidebar)
+                .uiProbe("sidebar-toggle")
             ExperienceSwitcher()
         }
         .uiProbe("chrome-bar")
@@ -162,17 +153,19 @@ struct ExperienceSwitcher: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        Picker("Experience", selection: Binding(get: { model.experience }, set: { e in withAnimation(.easeInOut(duration: 0.25)) { model.experience = e } })) {
-            ForEach(AppModel.Experience.allCases) { e in
-                Label(e.title, systemImage: e.symbol).tag(e)
+        // Our own segmented control: one tooltip and one hover state per page.
+        HStack(spacing: 2) {
+            ForEach(Array(AppModel.Experience.allCases.enumerated()), id: \.element) { i, e in
+                let on = model.experience == e
+                IconButton(symbol: e.symbol, help: "\(e.title) (⌘\(i + 1))", size: .band, on: on) {
+                    withAnimation(.easeInOut(duration: 0.25)) { model.experience = e }
+                }
+                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(on ? Color.accentColor.opacity(0.18) : .clear))
+                .uiProbe("experience-\(e.rawValue)")
             }
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .labelStyle(.iconOnly)
-        .controlSize(.regular)
-        .fixedSize()
-        .help("Messenger ⌘1 · Network ⌘2 · Insights ⌘3 · Settings ⌘4")
+        .padding(2)
+        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .uiProbe("experience-switcher")
     }
 }
@@ -244,28 +237,13 @@ struct PageHeader: View {
     }
 }
 
-/// One look for every button on the top band (the thread actions and the `i`).
-struct BandIcon: View {
-    let name: String
-    var on = false
-    var body: some View {
-        Image(systemName: name)
-            .font(.system(size: 15, weight: .medium))
-            .foregroundStyle(on ? Color.accentColor : .secondary)
-            .frame(width: 28, height: 26)
-            .contentShape(Rectangle())
-    }
-}
-
 /// The one control for the contact panel: `i`, far right of the window, same glyph
 /// whether the panel is open or closed.
 struct InspectorToggle: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        Button { model.toggleInspector() } label: { BandIcon(name: "info.circle", on: model.inspectorVisible) }
-            .buttonStyle(.plain)
-            .help(model.inspectorVisible ? "Hide contact details (⌥⌘I)" : "Show contact details (⌥⌘I)")
+        IconButton(symbol: "info.circle", help: model.inspectorVisible ? "Hide contact details (⌥⌘I)" : "Show contact details (⌥⌘I)", size: .band, on: model.inspectorVisible) { model.toggleInspector() }
             .uiProbe("inspector-toggle")
     }
 }
@@ -281,24 +259,19 @@ struct ThreadActions: View {
         @Bindable var inbox = model.inbox
         let id = convId
         HStack(spacing: 2) {
-            Button { inbox.togglePin(id) } label: { BandIcon(name: inbox.isPinned(id) ? "pin.fill" : "pin", on: inbox.isPinned(id)) }
-                .buttonStyle(.plain).disabled(!inbox.isPinned(id) && !inbox.canPinMore)
-                .help(inbox.isPinned(id) ? "Unpin (⇧⌘P)" : "Pin (⇧⌘P)")
+            IconButton(symbol: inbox.isPinned(id) ? "pin.fill" : "pin", help: inbox.isPinned(id) ? "Unpin (⇧⌘P)" : "Pin (⇧⌘P)", size: .band, on: inbox.isPinned(id)) { inbox.togglePin(id) }
+                .disabled(!inbox.isPinned(id) && !inbox.canPinMore)
                 .uiProbe("action-pin")
-            Button { inbox.showLabelPicker = true } label: { BandIcon(name: inbox.organizer.labels(for: id).isEmpty ? "tag" : "tag.fill") }
-                .buttonStyle(.plain).help("Labels (L)")
+            IconButton(symbol: inbox.organizer.labels(for: id).isEmpty ? "tag" : "tag.fill", help: "Labels (L)", size: .band) { inbox.showLabelPicker = true }
                 .popover(isPresented: $inbox.showLabelPicker, arrowEdge: .bottom) { LabelPicker(convId: id).environment(model) }
                 .uiProbe("action-label")
-            Button { inbox.showSnoozePicker = true } label: { BandIcon(name: inbox.organizer.snooze(id) == nil ? "clock" : "clock.fill") }
-                .buttonStyle(.plain).help("Snooze or remind (H)")
+            IconButton(symbol: inbox.organizer.snooze(id) == nil ? "clock" : "clock.fill", help: "Snooze or remind (H)", size: .band) { inbox.showSnoozePicker = true }
                 .popover(isPresented: $inbox.showSnoozePicker, arrowEdge: .bottom) { SnoozePicker(convId: id) { inbox.showSnoozePicker = false }.environment(model) }
                 .uiProbe("action-snooze")
-            Button { inbox.showNoteEditor = true } label: { BandIcon(name: inbox.organizer.note(id).isEmpty ? "note.text" : "note.text.badge.plus") }
-                .buttonStyle(.plain).help("Note (N)")
+            IconButton(symbol: inbox.organizer.note(id).isEmpty ? "note.text" : "note.text.badge.plus", help: "Note (N)", size: .band) { inbox.showNoteEditor = true }
                 .popover(isPresented: $inbox.showNoteEditor, arrowEdge: .bottom) { NoteEditor(convId: id, compact: true).environment(model) }
                 .uiProbe("action-note")
-            Button { inbox.toggleArchive(id) } label: { BandIcon(name: inbox.isArchived(id) ? "tray.and.arrow.up" : "archivebox") }
-                .buttonStyle(.plain).help(inbox.isArchived(id) ? "Unarchive (E)" : "Archive (E)")
+            IconButton(symbol: inbox.isArchived(id) ? "tray.and.arrow.up" : "archivebox", help: inbox.isArchived(id) ? "Unarchive (E)" : "Archive (E)", size: .band) { inbox.toggleArchive(id) }
                 .uiProbe("action-archive")
         }
     }
@@ -313,24 +286,29 @@ struct MessengerDetail: View {
     var body: some View {
         let inbox = model.inbox
         let panel = model.inspectorVisible && inbox.draft == nil && inbox.selected != nil
+        GeometryReader { geo in
         HStack(spacing: 0) {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .environment(\.detailFullWidth, geo.size.width)
                 .safeAreaBar(edge: .top) {
-                    PageBar(trailingSlot: Chrome.trailingSlot) {
+                    // With the panel open the actions sit above the panel, so the header may use the whole column.
+                    PageBar(trailingSlot: panel ? 12 : Chrome.trailingSlot) {
                         detailHeader // stays, panel or no panel
                     } trailing: { EmptyView() }
                 }
-            if panel, let snap = inbox.selected {
+            if inbox.draft == nil, let snap = inbox.selected {
+                // The column's width animates (not a slide-in over a jump): the thread narrows
+                // at the same pace the panel appears.
                 ContactInspector(snapshot: snap)
                     .id(snap.record.convId)
-                    // No header of its own (the thread header stays put); just the band's height
-                    // kept clear for the actions and the `i`, with the body scrolling under.
                     .safeAreaBar(edge: .top) { Color.clear.frame(height: Chrome.barHeight).uiProbe("panel-band") }
                     .background(Color.primary.opacity(0.035))
                     .frame(width: Chrome.panelWidth)
-                    .transition(.move(edge: .trailing))
+                    .frame(width: panel ? Chrome.panelWidth : 0, alignment: .leading)
+                    .clipped()
             }
+        }
         }
         .animation(.easeInOut(duration: 0.25), value: model.inspectorVisible)
     }
@@ -373,6 +351,16 @@ struct MessengerDetail: View {
         } else {
             ContentUnavailableView("Select a conversation", systemImage: "bubble.left.and.bubble.right", description: Text("\(inbox.snapshots.count) conversations · \(inbox.unreadCount) unread"))
         }
+    }
+}
+
+/// The detail's full width (panel or not), so bubbles are sized for the room the
+/// thread has when the panel is closed and only whitespace collapses when it opens.
+private struct DetailFullWidthKey: EnvironmentKey { static let defaultValue: CGFloat = 0 }
+extension EnvironmentValues {
+    var detailFullWidth: CGFloat {
+        get { self[DetailFullWidthKey.self] }
+        set { self[DetailFullWidthKey.self] = newValue }
     }
 }
 

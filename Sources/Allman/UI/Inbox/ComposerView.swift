@@ -28,9 +28,7 @@ struct ComposerView: View {
                         Text(reply.previewText.replacingOccurrences(of: "\n", with: " ")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
                     Spacer()
-                    Button { inbox.replyingTo[convId] = nil } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
-                        .buttonStyle(.plain)
-                        .help("Cancel reply")
+                    IconButton(symbol: "xmark.circle.fill", help: "Cancel reply", size: .custom(.body, 22, 22)) { inbox.replyingTo[convId] = nil }
                 }
                 .padding(.horizontal, 12).padding(.vertical, 6)
                 .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -86,29 +84,14 @@ struct ComposerView: View {
                     .padding(.vertical, 6)
                     .frame(minHeight: 36) // one line is exactly as tall as the send button
                 if canSend {
-                    Button(action: send) {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 24))
-                            .foregroundStyle(Color(nsColor: .systemBlue))
-                        // Same height as a one-line field, so the arrow is centered on the
-                        // composing line and rides the last line as the field grows.
-                        .frame(width: 30, height: 36)
-                    }
-                    .buttonStyle(.plain)
-                    .keyboardShortcut(.return, modifiers: .command)
-                    .help("Send (Return)")
-                    .padding(.trailing, 4)
+                    // Same height as a one-line field, so the arrow is centered on the
+                    // composing line and rides the last line as the field grows.
+                    IconButton(symbol: "arrow.up.circle.fill", help: "Send (Return)", size: .custom(.system(size: 24), 30, 36), tint: Color(nsColor: .systemBlue), shortcut: .return, modifiers: .command, action: send)
+                        .padding(.trailing, 4)
                 } else {
                     // Empty field: the mic takes the send button's spot, like Messages.
-                    Button { Task { await recorder.start() } } label: {
-                        Image(systemName: "mic.fill")
-                            .font(.system(size: 15))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 30, height: 36)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Record a voice note (sent with allman send --audio)")
-                    .padding(.trailing, 4)
+                    IconButton(symbol: "mic.fill", help: "Record a voice note (sent with allman send --audio)", size: .custom(.system(size: 15), 30, 36)) { Task { await recorder.start() } }
+                        .padding(.trailing, 4)
                 }
             }
             .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 19, style: .continuous))
@@ -126,17 +109,13 @@ struct ComposerView: View {
     /// Red dot, elapsed time and a live level meter while the mic is open.
     private var recordingBar: some View {
         HStack(spacing: 10) {
-            Button { recorder.discard() } label: { Image(systemName: "xmark.circle.fill").font(.system(size: 20)).foregroundStyle(.secondary) }
-                .buttonStyle(.plain).help("Discard")
+            IconButton(symbol: "xmark.circle.fill", help: "Discard the recording", size: .custom(.system(size: 20), 28, 28)) { recorder.discard() }
                 .keyboardShortcut(.escape, modifiers: [])
             Circle().fill(.red).frame(width: 9, height: 9)
                 .opacity(Int(recorder.duration * 2) % 2 == 0 ? 1 : 0.35)
             Text(VoiceRecorder.clock(recorder.duration)).font(AFont.body.monospacedDigit()).frame(width: 40, alignment: .leading)
             LevelMeter(level: recorder.level).frame(height: 18)
-            Button { recorder.stop() } label: {
-                Image(systemName: "stop.circle.fill").font(.system(size: 24)).foregroundStyle(.red)
-            }
-            .buttonStyle(.plain).help("Stop recording")
+            IconButton(symbol: "stop.circle.fill", help: "Stop recording", size: .custom(.system(size: 24), 32, 32), tint: .red) { recorder.stop() }
             .keyboardShortcut(.return, modifiers: [])
         }
         .padding(.horizontal, 10).frame(minHeight: 36)
@@ -147,20 +126,13 @@ struct ComposerView: View {
     /// Listen back, discard, or send the recording.
     private var previewBar: some View {
         HStack(spacing: 10) {
-            Button { recorder.discard() } label: { Image(systemName: "trash.circle.fill").font(.system(size: 20)).foregroundStyle(.secondary) }
-                .buttonStyle(.plain).help("Discard")
+            IconButton(symbol: "trash.circle.fill", help: "Discard the voice note", size: .custom(.system(size: 20), 28, 28)) { recorder.discard() }
                 .keyboardShortcut(.escape, modifiers: [])
-            Button { recorder.togglePreview() } label: {
-                Image(systemName: recorder.isPlaying ? "pause.circle.fill" : "play.circle.fill").font(.system(size: 22)).foregroundStyle(Color(nsColor: .systemBlue))
-            }
-            .buttonStyle(.plain).help(recorder.isPlaying ? "Pause" : "Listen")
+            IconButton(symbol: recorder.isPlaying ? "pause.circle.fill" : "play.circle.fill", help: recorder.isPlaying ? "Pause" : "Listen before sending", size: .custom(.system(size: 22), 30, 30), tint: Color(nsColor: .systemBlue)) { recorder.togglePreview() }
             Image(systemName: "waveform").foregroundStyle(.secondary)
             Text("Voice note · \(VoiceRecorder.clock(recorder.duration))").font(AFont.body)
             Spacer()
-            Button(action: sendRecording) {
-                Image(systemName: "arrow.up.circle.fill").font(.system(size: 24)).foregroundStyle(Color(nsColor: .systemBlue))
-            }
-            .buttonStyle(.plain).help("Send voice note (Return)")
+            IconButton(symbol: "arrow.up.circle.fill", help: "Send voice note (Return)", size: .custom(.system(size: 24), 32, 32), tint: Color(nsColor: .systemBlue), action: sendRecording)
             .keyboardShortcut(.return, modifiers: [])
         }
         .padding(.horizontal, 10).frame(minHeight: 36)

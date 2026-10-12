@@ -26,6 +26,7 @@ struct ThreadView: View {
     /// While set, a pane-width change is in progress and the bottom is held, whatever the
     /// intermediate geometry says (rows re-wrap before the new width is reported).
     @State private var holdBottomUntil = Date.distantPast
+    @Environment(\.detailFullWidth) private var detailFullWidth
 
     private enum Row: Identifiable {
         case stamp(Date)
@@ -52,7 +53,10 @@ struct ThreadView: View {
         VStack(spacing: 0) {
             ReminderBanner(convId: convId).padding(.top, 6)
             GeometryReader { geo in
-            let maxBubble = max(260, (geo.size.width - 32) * 0.6)
+            // Sized for the detail with the panel closed, so opening it mostly collapses
+            // whitespace instead of re-wrapping every bubble.
+            let full = detailFullWidth > 0 ? detailFullWidth : geo.size.width
+            let maxBubble = min(max(260, (full - 32) * 0.6), max(200, geo.size.width - 32))
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 2) {
@@ -145,8 +149,11 @@ struct ThreadView: View {
                         // exactly on the bottom, instantly (an animated scroll here hops).
                         proxy.scrollTo("bottom", anchor: .bottom)
                         Task { @MainActor in
-                            try? await Task.sleep(for: .milliseconds(40))
-                            if atBottom { proxy.scrollTo("bottom", anchor: .bottom) }
+                            // The swap lays out over a few frames (more on a loaded machine): keep landing.
+                            for ms in [40, 80, 130, 250] {
+                                try? await Task.sleep(for: .milliseconds(ms))
+                                if atBottom { proxy.scrollTo("bottom", anchor: .bottom) }
+                            }
                         }
                     }
                 }

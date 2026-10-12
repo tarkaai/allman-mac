@@ -1,18 +1,25 @@
 import Charts
 import SwiftUI
 
-/// Inbox analytics: volume by week, reply rate and speed, who's waiting.
-/// Insights sidebar: what the numbers cover.
+/// Insights sidebar: which account the numbers are for (every signed-in account is listed).
 struct InsightsSidebar: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        List(selection: .constant("overview")) {
-            Label("Overview", systemImage: "chart.bar.xaxis").tag("overview")
-            Section("Covers") {
-                Text("Every stored thread for @\(model.current?.slug ?? "—"): the last 7 and 30 days for volume, 90 days for reply speed, 12 weeks on the chart.")
-                    .font(AFont.meta).foregroundStyle(.secondary)
-                    .lineLimit(nil).fixedSize(horizontal: false, vertical: true)
+        @Bindable var model = model
+        List(selection: Binding(get: { model.insightsAccountId ?? model.current?.id }, set: { model.insightsAccountId = $0 })) {
+            Section("Accounts") {
+                ForEach(model.sessions) { s in
+                    HStack(spacing: 8) {
+                        AvatarView(url: s.avatarURL, name: s.displayName, size: 24)
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(s.displayName).font(AFont.body).lineLimit(1)
+                            Text("@\(s.slug)").font(AFont.meta).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                    }
+                    .tag(s.id)
+                    .uiProbe("insights-account-\(s.id)")
+                }
             }
         }
         .listStyle(.sidebar)
@@ -22,53 +29,90 @@ struct InsightsSidebar: View {
     }
 }
 
+/// Inbox analytics for one account over a window of time.
 struct InsightsView: View {
     @Environment(AppModel.self) private var model
     @State private var insights: Insights?
+    @State private var customDraft = ""
 
     var body: some View {
+        @Bindable var model = model
+        let session = model.insightsSession
         ScrollView {
         VStack(alignment: .leading, spacing: 14) {
+            // The window of time, by calendar days.
+            HStack(spacing: 6) {
+                FlowLayout(spacing: 4) {
+                    ForEach(InsightsRange.allCases) { r in
+                        let on = model.insightsRange == r
+                        Button { model.insightsRange = r; reload() } label: {
+                            Text(r.title)
+                                .font(on ? AFont.chipStrong : AFont.chip)
+                                .padding(.horizontal, 8).padding(.vertical, 3)
+                                .background(on ? Color.accentColor.opacity(0.2) : Color.primary.opacity(0.06), in: Capsule())
+                                .foregroundStyle(on ? Color.accentColor : .primary)
+                        }
+                        .buttonStyle(.plain)
+                        .iconHover()
+                        .help(r == .allTime ? "Every stored message" : (r == .custom ? "A number of calendar days of your choosing" : "Since the start of the day \(r.days(custom: 0) ?? 0) days ago"))
+                        .uiProbe("insights-range-\(r.rawValue)")
+                    }
+                    if model.insightsRange == .custom {
+                        HStack(spacing: 4) {
+                            TextField("days", text: $customDraft)
+                                .textFieldStyle(.roundedBorder).frame(width: 56)
+                                .onSubmit { applyCustom() }
+                                .help("How many calendar days back")
+                            Text("days").font(AFont.meta).foregroundStyle(.secondary)
+                        }
+                        .uiProbe("insights-custom-days")
+                    }
+                }
+            }
             if let ins = insights {
+                let label = rangeLabel
                 HStack(spacing: 10) {
-                    tile("Sent · 7d", "\(ins.sent7)", "\(ins.sent30) in 30d")
-                    tile("Received · 7d", "\(ins.received7)", "\(ins.received30) in 30d")
-                    tile("Reply rate · 30d", ins.replyRate30.map { "\(Int(($0 * 100).rounded()))%" } ?? "—", "\(ins.replied30) of \(ins.inboundThreads30) threads")
-                    tile("Median reply time", ins.medianReplyHours.map(Self.hours) ?? "—", "last 90 days")
+                    tile("Sent · \(label)", "\(ins.sent)", "messages you wrote").uiProbe("insights-tile-sent")
+                    tile("Received · \(label)", "\(ins.received)", "messages they wrote")
+                    tile("Reply rate", ins.replyRate.map { "\(Int(($0 * 100).rounded()))%" } ?? "—", "\(ins.replied) of \(ins.inboundThreads) threads answered")
+                    tile("Median reply time", ins.medianReplyHours.map(Self.hours) ?? "—", label)
                 }
                 HStack(spacing: 10) {
                     tile("Waiting on you", "\(ins.needsReply)", "threads where they wrote last")
-                    tile("New threads · 30d", "\(ins.newThreads30)", "conversations that started")
-                    tile("Stored", "\(ins.totalThreads.formatted())", "\(ins.totalMessages.formatted()) messages")
+                    tile("New threads · \(label)", "\(ins.newThreads)", "conversations that started")
+                    tile("Stored", "\(ins.totalThreads.formatted())", "\(ins.totalMessages.formatted()) messages, all time")
                 }
-                Text("Messages per week").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                Text(ins.bucketUnit == .day ? "Messages per day" : "Messages per week").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                 Chart {
-                    ForEach(ins.weeks) { w in
-                        BarMark(x: .value("Week", w.start, unit: .weekOfYear), y: .value("Count", w.received))
+                    ForEach(ins.buckets) { b in
+                        BarMark(x: .value("When", b.start, unit: ins.bucketUnit), y: .value("Count", b.received))
                             .foregroundStyle(by: .value("Direction", "Received"))
-                        BarMark(x: .value("Week", w.start, unit: .weekOfYear), y: .value("Count", w.sent))
+                        BarMark(x: .value("When", b.start, unit: ins.bucketUnit), y: .value("Count", b.sent))
                             .foregroundStyle(by: .value("Direction", "Sent"))
                     }
                 }
                 .chartForegroundStyleScale(["Received": Color(nsColor: .systemGray), "Sent": Color(nsColor: .systemBlue)])
-                .chartXAxis { AxisMarks(values: .stride(by: .weekOfYear, count: 2)) { _ in AxisValueLabel(format: .dateTime.month(.abbreviated).day()) } }
                 .frame(height: 150)
                 if !ins.topContacts.isEmpty {
-                    Text("Most active · 30d").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    Text("Most active · \(label)").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                     VStack(spacing: 2) {
                         ForEach(ins.topContacts) { c in
                             Button {
+                                if let s = session { model.select(accountId: s.id) }
                                 model.experience = .messenger
-                                model.inbox.select(c.convId)
+                                model.inbox.select(c.convId, reveal: true)
                             } label: {
                                 HStack {
                                     Text(c.name).font(.callout)
                                     Spacer()
                                     Text("\(c.count) message\(c.count == 1 ? "" : "s")").font(.caption).foregroundStyle(.secondary).monospacedDigit()
                                 }
+                                .padding(.horizontal, 6).padding(.vertical, 3)
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
+                            .iconHover()
+                            .help("Open this conversation")
                         }
                     }
                 }
@@ -83,19 +127,39 @@ struct InsightsView: View {
         .scrollEdgeEffectStyle(.soft, for: .top)
         .safeAreaBar(edge: .top) {
             PageBar {
-                PageHeader(symbol: "chart.bar.xaxis", title: "Insights", line1: model.current.map { "\($0.displayName) · @\($0.slug)" }, line2: insights.map { "\($0.totalThreads.formatted()) threads · \($0.totalMessages.formatted()) messages" })
+                // Two lines: the page, and whose numbers these are.
+                PageHeader(symbol: "chart.bar.xaxis", title: "Insights", line1: session.map { "\($0.displayName) · @\($0.slug)" })
+                    .uiProbe("insights-header")
             } trailing: {
-                Button { insights = nil; Task { await load() } } label: { Label("Recompute", systemImage: "arrow.clockwise") }.help("Recompute").controlSize(.small)
+                IconButton(symbol: "arrow.clockwise", help: "Recompute from the store", size: .band) { reload() }
             }
         }
-        .task(id: model.currentId) { await load() }
+        .task(id: "\(session?.id ?? "-")|\(model.insightsRange.rawValue)|\(model.insightsCustomDays)") { await load() }
+        .onAppear { customDraft = String(model.insightsCustomDays) }
     }
 
+    private var rangeLabel: String {
+        switch model.insightsRange {
+        case .allTime: return "all time"
+        case .custom: return "\(model.insightsCustomDays)d"
+        default: return "\(model.insightsRange.days(custom: 0) ?? 0)d"
+        }
+    }
+
+    private func applyCustom() {
+        if let n = Int(customDraft.trimmingCharacters(in: .whitespaces)), n > 0 { model.insightsCustomDays = n; reload() }
+    }
+
+    private func reload() { insights = nil; Task { await load() } }
+
     private func load() async {
-        guard let dir = model.inbox.accountDir else { return }
+        guard let session = model.insightsSession else { return }
+        if session.inbox.snapshots.isEmpty { await session.inbox.reloadAll() }
+        guard let dir = session.inbox.accountDir else { return }
         let reader = model.reader
-        let snaps = model.inbox.snapshots
-        insights = await Task.detached(priority: .userInitiated) { Insights.compute(reader: reader, accountDir: dir, snapshots: snaps) }.value
+        let snaps = session.inbox.snapshots
+        let since = model.insightsRange.since(custom: model.insightsCustomDays)
+        insights = await Task.detached(priority: .userInitiated) { Insights.compute(reader: reader, accountDir: dir, snapshots: snaps, since: since) }.value
     }
 
     private func tile(_ title: String, _ value: String, _ detail: String) -> some View {

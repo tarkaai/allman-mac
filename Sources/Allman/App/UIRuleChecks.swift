@@ -154,9 +154,18 @@ enum UIRuleChecks {
         check("R17", "thread scrolled to the newest message on open", b0.0, b0.1)
 
         // --- R5: clicking the `i` opens the panel (it is clickable); still one `i`, same place.
+        let headerW0 = ax(w, "thread-header")?.width ?? 0
         clickProbe("inspector-toggle", in: w)
-        try await sleep(700)
+        // R32: the thread narrows at the pace the panel appears (several widths over the animation, no single jump).
+        var widths: [Int] = []
+        for _ in 0..<12 { try await sleep(25); widths.append(Int(ax(w, "thread-scroll")?.width ?? 0)) }
+        try await sleep(400)
         shot("02-panel-open")
+        let distinct = Array(Set(widths)).count
+        let jumps = zip(widths, widths.dropFirst()).map { abs($1 - $0) }
+        check("R32", "opening the panel narrows the thread gradually, in step with the panel", distinct >= 3 && (jumps.max() ?? 0) <= Int(Chrome.panelWidth) / 2, "widths=\(widths)")
+        let headerW1 = ax(w, "thread-header")?.width ?? 0
+        check("R33", "the thread header keeps its full width when the panel opens (no needless ellipsis)", abs(headerW1 - headerW0) < 2, "width \(Int(headerW0))→\(Int(headerW1))")
         check("R5", "clicking the `i` opens the panel", model.inspectorVisible)
         check("R5", "no stray action from the click", model.inbox.toast == nil, "toast=\(model.inbox.toast ?? "nil")")
         let openToggles = axAll(w, "inspector-toggle")
@@ -301,6 +310,22 @@ enum UIRuleChecks {
         check("R13", "chrome bar still first on the settings page", (ax(w, "sidebar-toggle")?.minX ?? 0) < (ax(w, "experience-switcher")?.minX ?? -1))
         model.show(.network); try await sleep(600); shot("08-network")
         check("R13", "Network inside the main window", visibleWindows().count == windowsBefore)
+        // R34: the new-message button is on the band everywhere; from another page it switches to the inbox and starts the draft.
+        check("R34", "new-message button on the band while on Network", ax(w, "compose-button") != nil)
+        clickProbe("compose-button", in: w)
+        try await sleep(700)
+        shot("08b-compose-from-network")
+        check("R34", "clicking it from Network opens the inbox with a new message started", model.experience == .messenger && model.inbox.composing && ax(w, "compose-instructions") != nil, "exp=\(model.experience) composing=\(model.inbox.composing)")
+        if let instr = ax(w, "compose-instructions") { check("R34b", "new-message instructions wrap instead of truncating", instr.height > 30, "height=\(Int(instr.height))") }
+        model.inbox.composing = false
+        // R35: insights per account with a window of time; two-line header.
+        model.show(.insights); try await sleep(1500); shot("08c-insights")
+        check("R35", "insights sidebar lists the account(s)", !axAll(w, "insights-account-\(model.current?.id ?? "")").isEmpty)
+        check("R35", "insights range chips: all time · year · month · week · day · custom", InsightsRange.allCases.allSatisfy { ax(w, "insights-range-\($0.rawValue)") != nil })
+        if let h = ax(w, "insights-header") { check("R35", "insights header is two lines (page + account)", h.height <= 40, "height=\(Int(h.height))") }
+        clickProbe("insights-range-custom", in: w); try await sleep(500)
+        check("R35", "custom range shows a days field", ax(w, "insights-custom-days") != nil)
+        clickProbe("insights-range-month", in: w); try await sleep(300)
         model.show(.messenger); try await sleep(600)
 
         // --- R4: collapsing the sidebar leaves the chrome bar exactly where it is; R13b: per-page memory, Settings never collapses.

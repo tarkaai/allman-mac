@@ -284,16 +284,17 @@ struct ProfileHeader: View {
                 Divider()
                 Button("Settings…") { model.show(.settings) }
             } label: {
-                BarIcon("chevron.down.circle")
+                BarIcon("chevron.down.circle").iconHover()
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
-            .help("Account")
+            .help("Account: sync, sign in or out, add another")
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
         .frame(maxWidth: .infinity)
-        .background(.thinMaterial)
+        // Glass over the list, which scrolls under it.
+        .background(.ultraThinMaterial)
         .accessibilityElement(children: .contain)
         .uiProbe("profile-header")
     }
@@ -333,7 +334,7 @@ struct InboxBar: View {
                     Divider()
                     Button("Mark All as Read") { inbox.markAllSeen() }.disabled(inbox.unreadCount == 0)
                 } label: {
-                    BarIcon(inbox.filter == .all || inbox.filter.isLabel ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill")
+                    BarIcon(inbox.filter == .all || inbox.filter.isLabel ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill").iconHover()
                 }
                 .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
                 .frame(width: 24, height: 22)
@@ -342,9 +343,7 @@ struct InboxBar: View {
                 Text(title(inbox.filter)).font(AFont.title).lineLimit(1).frame(height: 22).uiProbe("inbox-title")
                 Spacer(minLength: 8)
                 HStack(spacing: 2) {
-                Button { creatingLabel = true } label: { BarIcon("tag.badge.plus") }
-                    .buttonStyle(.plain)
-                    .help("New label (an inbox of its own)")
+                IconButton(symbol: "tag.badge.plus", help: "New label (an inbox of its own)") { creatingLabel = true }
                     .popover(isPresented: $creatingLabel, arrowEdge: .bottom) {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("New label").font(.headline)
@@ -355,10 +354,9 @@ struct InboxBar: View {
                         .padding(12).frame(width: 300)
                         .onAppear { let used = Set(inbox.organizer.labels.map(\.icon)); newIcon = InboxLabel.icons.first { !used.contains($0) } ?? "tag" }
                     }
-                Button { inbox.composing.toggle() } label: { BarIcon(inbox.composing ? "xmark.circle" : "square.and.pencil", large: true) }
-                    .buttonStyle(.plain)
-                    .help(inbox.composing ? "Cancel new message (Esc)" : "New message (⌘N) — pick several people for a group")
-                    .uiProbe("compose-button")
+                if inbox.composing {
+                    IconButton(symbol: "xmark.circle", help: "Cancel new message (Esc)") { inbox.composing = false }
+                }
                 }
             }
             FlowLayout(spacing: 4) {
@@ -468,9 +466,7 @@ struct ConversationActions: View {
     }
 
     private func icon(_ name: String, help: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) { BarIcon(name) }
-            .buttonStyle(.plain)
-            .help(help)
+        IconButton(symbol: name, help: help, action: action)
     }
 }
 
@@ -636,15 +632,8 @@ private struct RowActions: View {
     }
 
     private func btn(_ icon: String, _ help: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(AFont.icon)
-                .foregroundStyle(.secondary)
-                .frame(width: 26, height: 22, alignment: .center)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain).help(help)
-        .uiProbe("row-action-icon")
+        IconButton(symbol: icon, help: help, size: .custom(AFont.icon, 26, 22), action: action)
+            .uiProbe("row-action-icon")
     }
 }
 

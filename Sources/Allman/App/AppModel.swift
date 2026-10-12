@@ -66,6 +66,20 @@ final class AppModel {
         didSet { UserDefaults.standard.set(inspectorVisible, forKey: Self.inspectorKey) }
     }
 
+    /// New message from anywhere: the messenger, sidebar open, people search ready.
+    func startNewMessage() {
+        experience = .messenger
+        if isSidebarCollapsed { toggleSidebar() }
+        inbox.composing = true
+        openInboxWindow?()
+    }
+
+    /// Insights: which account and which window of time.
+    var insightsAccountId: String?
+    var insightsRange: InsightsRange = .month
+    var insightsCustomDays = 14
+    var insightsSession: AccountSession? { sessions.first { $0.id == insightsAccountId } ?? current }
+
     /// True while the contact panel slides: the thread re-lays out without animations
     /// of its own (text and bubbles then move together, driven by the panel's width).
     var panelAnimating = false

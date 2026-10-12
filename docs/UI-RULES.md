@@ -42,6 +42,12 @@ Screenshots of every checked state are written next to the test's result JSON.
 | R30 | Sending feels solid: the bubble appears within 150 ms, the stream stays pinned to the newest message at every frame, the placeholder and its stored copy never show together, nothing flashes, the row slides to the top of the list, and a "Sent" line under the newest own message keeps the placeholder→stored swap height-neutral. | mock (50 samples at 50 ms, from a thread not at the top) |
 | R31 | The row hover capsule (labels · snooze · archive) is centered on its row and its icons are centered in it. | mock |
 | R27b | Group avatars pack every face inside one avatar-sized circle (two on a diagonal, three in a triangle); four or more add "+N". | mock + screenshot |
+| R32 | Opening the contact panel narrows the thread at the pace the panel appears (no jump, then slide); bubbles are sized for the detail with the panel closed, so mostly whitespace collapses. | mock |
+| R33 | The thread header keeps its full width when the panel opens; it may use the whole column before truncating. | mock |
+| R34 | The new-message button lives on the top band and is always visible; from any page it switches to the inbox and starts a new message. Its instructions wrap. | mock |
+| R35 | Insights are per account (sidebar lists every signed-in account) over a window of time — all time, past year/month/week/day by calendar days, or a custom number of days; the header is two lines (page + account). | mock + unit |
+| R36 | Every icon button has the same hover highlight and its own tooltip (`IconButton`); no tooltips for a whole group. | lint |
+| R37 | Glass, not gray: the account block and the new-message pane use the blur material over the list. | review |
 | R28 | Every conversation row is the same height (two preview lines always reserved) and the avatar is vertically centered. | mock |
 | R29 | Row hover actions are labels · snooze · archive only (pin and note live on the top band). | lint |
 | R6b | The thread header keeps its exact place whether the sidebar is open or collapsed, and is not jammed against the top edge (52pt band). | mock |

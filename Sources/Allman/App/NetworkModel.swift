@@ -52,7 +52,7 @@ final class NetworkModel {
             switch self {
             case .connections: return "person.2"
             case .enriched: return "person.text.rectangle"
-            case .missing: return "person.crop.rectangle.badge.questionmark"
+            case .missing: return "person.crop.circle.badge.questionmark"
             case .invitations: return "person.badge.plus"
             }
         }

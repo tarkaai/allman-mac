@@ -278,7 +278,7 @@ enum UIRuleChecks {
             try await sleep(1200)
             shot("06b-group-three")
             check("R27", "a three-person group is named after all three", three.record.displayName == "Priya Example, Theo Sample, Ro Example", three.record.displayName)
-            check("R27", "a three-person group shows a +1 badge on its stacked avatar", !axAll(w, "group-more-badge").isEmpty, "badges=\(axAll(w, "group-more-badge").count)")
+            check("R27", "a three-person group shows all three faces inside one avatar circle (no +N needed)", !axAll(w, "group-avatar").isEmpty && axAll(w, "group-more-badge").isEmpty, "avatars=\(axAll(w, "group-avatar").count) badges=\(axAll(w, "group-more-badge").count)")
         } else { check("R27", "mock store has a three-person group", false) }
         if let group = model.inbox.snapshots.first(where: { $0.record.members.count == 2 }) {
             let r = group.record
@@ -326,6 +326,55 @@ enum UIRuleChecks {
         model.toggleSidebar(); try await sleep(900)
         check("R4", "expanded again: sidebar back", !model.isSidebarCollapsed && (ax(w, "sidebar")?.width ?? 0) > 300)
         shot("10-expanded")
+
+        // --- R31: the row hover capsule is centered on its row, icons centered in it.
+        if let hoverId = ids.dropFirst(2).first(where: { fullyVisible($0) }) {
+            model.inbox.rowPopover = .init(convId: hoverId, kind: .label)
+            try await sleep(500)
+            shot("05c-row-hover")
+            if let capsule = ax(w, "row-actions"), let row = ax(w, "row-\(hoverId)") {
+                let icons = axAll(w, "row-action-icon")
+                check("R31", "hover capsule is vertically centered on its row", abs(capsule.midY - row.midY) < 1.5, "capsule.midY=\(Int(capsule.midY)) row.midY=\(Int(row.midY))")
+                check("R31", "hover icons are vertically centered in the capsule", icons.count == 3 && icons.allSatisfy { abs($0.midY - capsule.midY) < 1.5 }, "icons=\(icons.count)")
+            } else { check("R31", "hover capsule present", false) }
+            model.inbox.rowPopover = nil
+            try await sleep(300)
+        }
+
+        // --- R30: sending feels solid — the bubble appears at once, the stream stays pinned to the
+        // bottom at every frame, and the placeholder and its stored copy never show together.
+        if let conv = order.dropFirst(4).first(where: { !$0.record.isGroupThread }) {
+            model.inbox.select(conv.record.convId, reveal: true)
+            try await sleep(1200)
+            let id = conv.record.convId
+            var storedCounts: [Int] = []
+            let text = "Harness ping \(Int(Date().timeIntervalSince1970))"
+            let storedBefore = axAll(w, "bubble-stored").count
+            var samples: [(ms: Int, bottomIn: Bool, outgoing: Int, stored: Int, bottomY: Int)] = []
+            let t0 = Date()
+            Task { _ = await model.inbox.send(text, to: id) }
+            for i in 0..<50 {
+                try await sleep(50)
+                let ms = Int(Date().timeIntervalSince(t0) * 1000)
+                let b = threadAtBottom()
+                let bottomY = Int(ax(w, "thread-bottom")?.maxY ?? -1)
+                let out = model.inbox.outgoingMessages(id).count
+                let stored = (model.inbox.messages[id] ?? []).filter { $0.body == text }.count
+                samples.append((ms, b.0, out, stored, bottomY))
+                storedCounts.append(axAll(w, "bubble-stored").count + axAll(w, "bubble-outgoing").count)
+                if [1, 4, 8, 20, 24, 30, 40].contains(i) { shot("13-send-\(String(format: "%04d", ms))ms") }
+            }
+            check("R30", "the stream never flashes (bubble count never drops during the send)", zip(storedCounts, storedCounts.dropFirst()).allSatisfy { $1 >= $0 }, "counts=\(storedCounts.prefix(12))…")
+            check("R30", "the sent thread moves to the top of the list", model.inbox.filtered.first?.record.convId == id || model.inbox.pinnedInView.contains { $0.record.convId == id }, "top=\(model.inbox.filtered.first?.record.displayName ?? "-")")
+            let appearedAt = samples.first { $0.outgoing > 0 || $0.stored > 0 }?.ms ?? -1
+            check("R30", "the sent bubble appears within 150 ms", appearedAt >= 0 && appearedAt <= 150, "appeared=\(appearedAt)ms")
+            let settled = samples.filter { $0.ms > 550 }
+            check("R30", "the stream stays at the newest message while sending (after the rise-in)", !settled.isEmpty && settled.allSatisfy(\.bottomIn), "offFrames=\(settled.filter { !$0.bottomIn }.map(\.ms))")
+            let ys = settled.map(\.bottomY)
+            check("R30", "the bottom edge does not jump once settled", (ys.max() ?? 0) - (ys.min() ?? 0) <= 2, "bottomY=\(ys.min() ?? 0)…\(ys.max() ?? 0) trace=\(settled.map { "\($0.ms):\($0.bottomY)/o\($0.outgoing)s\($0.stored)" }.joined(separator: " "))")
+            check("R30", "placeholder and stored copy never show together", samples.allSatisfy { !($0.outgoing > 0 && $0.stored > 0) }, "both=\(samples.filter { $0.outgoing > 0 && $0.stored > 0 }.map(\.ms))")
+            check("R30", "the message ends up stored, placeholder gone", samples.last.map { $0.stored == 1 && $0.outgoing == 0 } == true && axAll(w, "bubble-stored").count == storedBefore + 1, "last=\(samples.last.map { "out=\($0.outgoing) stored=\($0.stored)" } ?? "-") bubbles \(storedBefore)→\(axAll(w, "bubble-stored").count)")
+        }
 
         // --- R12b: two recipients in a new message make a group thread (through the CLI).
         let a = DraftRecipient(slug: "nova-example", name: "Nova Example", headline: nil, avatarURL: nil)

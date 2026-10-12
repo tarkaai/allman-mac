@@ -77,6 +77,9 @@ struct ConversationListView: View {
                     }
                     // Plain, not sidebar: the selection highlight runs edge to edge (no inset, no rounding).
                     .listStyle(.plain)
+                    // A thread moving (a send, a new message) slides to its place; scoped to the
+                    // list so the thread's own layout never animates with it.
+                    .animation(.easeInOut(duration: 0.25), value: rows.map(\.record.convId))
                     .scrollContentBackground(.hidden)
                     .contentMargins(.vertical, 0, for: .scrollContent)
                     .scrollEdgeEffectStyle(.soft, for: .top)
@@ -587,11 +590,12 @@ struct ConversationRow: View {
         // Actions ride over the time stamp on hover: no layout shift. The hover
         // region is the composed row *including* the overlay, so moving onto a
         // button doesn't count as leaving the row.
-        .overlay(alignment: .topTrailing) {
+        .overlay(alignment: .trailing) {
+            // Centered on the row; the capsule hugs the icons so they sit centered in it.
             if hovering || model.inbox.rowPopover?.convId == r.convId {
                 RowActions(convId: r.convId)
-                    .padding(.top, 2)
                     .background(.regularMaterial, in: Capsule())
+                    .uiProbe("row-actions")
                     .transition(.opacity)
             }
         }
@@ -615,7 +619,7 @@ private struct RowActions: View {
                 .popover(isPresented: shown(.snooze), arrowEdge: .bottom) { SnoozePicker(convId: convId) { inbox.rowPopover = nil }.environment(model) }
             btn(inbox.isArchived(convId) ? "tray.and.arrow.up" : "archivebox", "Archive") { inbox.toggleArchive(convId) }
         }
-        .padding(.horizontal, 4)
+        .padding(.horizontal, 4).padding(.vertical, 3)
     }
 
     /// The popover opens on this row's button; the thread is selected too so the keys agree.
@@ -632,8 +636,15 @@ private struct RowActions: View {
     }
 
     private func btn(_ icon: String, _ help: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) { BarIcon(icon) }
-            .buttonStyle(.plain).help(help)
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(AFont.icon)
+                .foregroundStyle(.secondary)
+                .frame(width: 26, height: 22, alignment: .center)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).help(help)
+        .uiProbe("row-action-icon")
     }
 }
 

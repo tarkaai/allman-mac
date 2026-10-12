@@ -48,6 +48,7 @@ struct ThreadView: View {
         let hiddenCount = allMessages.count - messages.count
         let outgoing = inbox.outgoingMessages(convId)
         let rows = rows(for: messages, outgoing: outgoing)
+        let newestOwnId: String? = (outgoing.isEmpty && messages.last?.isFromMe == true) ? messages.last?.id : nil
         VStack(spacing: 0) {
             ReminderBanner(convId: convId).padding(.top, 6)
             GeometryReader { geo in
@@ -75,37 +76,9 @@ struct ThreadView: View {
                             case .stamp(let date):
                                 TimeStamp(date: date).padding(.vertical, 10)
                             case .message(let msg, let tail, let sender):
-                                MessageRow(
-                                    message: msg,
-                                    contactName: snapshot.record.displayName,
-                                    showsTail: tail,
-                                    senderName: sender,
-                                    reveal: model.debugShowTimes ? Self.timeGutter : reveal,
-                                    maxWidth: maxBubble,
-                                    media: inbox.media[convId] ?? [:],
-                                    mediaLoading: inbox.mediaLoading.contains(convId),
-                                    highlighted: highlightedUrn == msg.urn,
-                                    onReact: { emoji in Task { await inbox.react(msg, in: convId, emoji: emoji) } },
-                                    onReply: { inbox.replyingTo[convId] = msg }
-                                )
-                                .id(msg.id)
+                                storedRow(msg, tail: tail, sender: sender, convId: convId, maxBubble: maxBubble, newestOwnId: newestOwnId)
                             case .outgoing(let item):
-                                MessageRow(
-                                    message: item.asMessage,
-                                    contactName: snapshot.record.displayName,
-                                    showsTail: true,
-                                    reveal: model.debugShowTimes ? Self.timeGutter : reveal,
-                                    maxWidth: maxBubble,
-                                    media: item.localMedia,
-                                    pending: item.state,
-                                    onReact: { _ in },
-                                    onReply: {},
-                                    onRetry: { inbox.retry(item.id, in: convId) },
-                                    onDiscard: { inbox.discardOutgoing(item.id, in: convId) }
-                                )
-                                .id("outgoing-\(item.id)")
-                                // Rises out of the composer into the stream, like Messages.
-                                .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .identity))
+                                outgoingRow(item, convId: convId, maxBubble: maxBubble)
                             }
                         }
                         Color.clear.frame(height: 1).id("bottom").uiProbe("thread-bottom")
@@ -162,12 +135,25 @@ struct ThreadView: View {
                     settling = false
                 }
                 .onChange(of: messages.count) { old, new in
-                    // A message arrived (or ours was stored): the stream slides up to it.
-                    if old > 0, new > old { slideToBottom(proxy, .easeOut(duration: 0.25)) }
+                    // A message from them arrived: the stream slides up to it. Our own stored copy
+                    // replaces its placeholder in place — the anchor keeps the bottom; an extra
+                    // animated scroll here is what made the stream hop after a send.
+                    if old > 0, new > old, messages.last?.isFromMe != true {
+                        slideToBottom(proxy, .easeOut(duration: 0.25))
+                    } else if old > 0, new > old, atBottom {
+                        // The stored copy can be a few points shorter than the placeholder: land
+                        // exactly on the bottom, instantly (an animated scroll here hops).
+                        proxy.scrollTo("bottom", anchor: .bottom)
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(40))
+                            if atBottom { proxy.scrollTo("bottom", anchor: .bottom) }
+                        }
+                    }
                 }
                 .onChange(of: outgoing.count) { old, new in
-                    // Our bubble rises out of the composer and everything above moves up with it.
-                    if new > old { slideToBottom(proxy, .spring(duration: 0.4, bounce: 0.1)) }
+                    // Our bubble rises out of the composer and everything above moves up with it
+                    // (eased, no bounce: a spring overshoots and reads as a wobble).
+                    if new > old { slideToBottom(proxy, .easeOut(duration: 0.3)) }
                 }
                 .onChange(of: inbox.scrollTarget?.token) { _, _ in jumpIfNeeded(proxy, all: allMessages) }
                 .onChange(of: allMessages.isEmpty) { _, empty in if !empty { jumpIfNeeded(proxy, all: allMessages) } }
@@ -185,6 +171,49 @@ struct ThreadView: View {
         }
     }
 
+    @ViewBuilder
+    private func storedRow(_ msg: Message, tail: Bool, sender: String?, convId: String, maxBubble: CGFloat, newestOwnId: String?) -> some View {
+        let inbox = model.inbox
+        MessageRow(
+            message: msg,
+            contactName: snapshot.record.displayName,
+            showsTail: tail,
+            senderName: sender,
+            reveal: model.debugShowTimes ? Self.timeGutter : reveal,
+            maxWidth: maxBubble,
+            media: inbox.media[convId] ?? [:],
+            mediaLoading: inbox.mediaLoading.contains(convId),
+            highlighted: highlightedUrn == msg.urn,
+            showsSentStatus: msg.id == newestOwnId,
+            onReact: { emoji in Task { await inbox.react(msg, in: convId, emoji: emoji) } },
+            onReply: { inbox.replyingTo[convId] = msg }
+        )
+        .id(msg.id)
+        .uiProbe("bubble-stored")
+    }
+
+    @ViewBuilder
+    private func outgoingRow(_ item: InboxModel.OutgoingMessage, convId: String, maxBubble: CGFloat) -> some View {
+        let inbox = model.inbox
+        MessageRow(
+            message: item.asMessage,
+            contactName: snapshot.record.displayName,
+            showsTail: true,
+            reveal: model.debugShowTimes ? Self.timeGutter : reveal,
+            maxWidth: maxBubble,
+            media: item.localMedia,
+            pending: item.state,
+            onReact: { _ in },
+            onReply: {},
+            onRetry: { inbox.retry(item.id, in: convId) },
+            onDiscard: { inbox.discardOutgoing(item.id, in: convId) }
+        )
+        .id("outgoing-\(item.id)")
+        .uiProbe("bubble-outgoing")
+        // Rises out of the composer into the stream, like Messages.
+        .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .identity))
+    }
+
     /// Scrolls after the new row has been laid out, so the offset change itself
     /// animates (the stream visibly moves up) instead of snapping.
     private func slideToBottom(_ proxy: ScrollViewProxy, _ animation: Animation) {
@@ -194,10 +223,13 @@ struct ThreadView: View {
         // (seen in Release builds); re-issue imperatively over the next frames —
         // once it has landed the extra calls are no-ops.
         Task { @MainActor in
-            for ms in [30, 90, 200, 450] {
+            for ms in [30, 90, 200] {
                 try? await Task.sleep(for: .milliseconds(ms))
                 withAnimation(animation) { proxy.scrollTo("bottom", anchor: .bottom) }
             }
+            // Final, instant correction once everything has landed.
+            try? await Task.sleep(for: .milliseconds(150))
+            proxy.scrollTo("bottom", anchor: .bottom)
         }
     }
 
@@ -330,6 +362,9 @@ struct MessageRow: View {
     var highlighted = false
     /// Set for an optimistic bubble: lighter while sending, "Not Delivered" on failure.
     var pending: InboxModel.OutgoingMessage.State? = nil
+    /// The newest message in the thread when it is yours: a "Sent" line keeps the same
+    /// height as the placeholder's "Sending…", so the swap never moves the stream.
+    var showsSentStatus = false
     let onReact: (String) -> Void
     let onReply: () -> Void
     var onRetry: () -> Void = {}
@@ -394,6 +429,9 @@ struct MessageRow: View {
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .accessibilityLabel("\(mine ? "You" : contactName), \(Fmt.clockTime(message.date)): \(message.previewText)")
+        if pending == nil, showsSentStatus {
+            Text("Sent").font(.caption2).foregroundStyle(.secondary).uiProbe("sent-status")
+        }
         if let pending {
             switch pending {
             case .sending:

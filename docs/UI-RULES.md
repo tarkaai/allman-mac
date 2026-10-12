@@ -39,6 +39,9 @@ Screenshots of every checked state are written next to the test's result JSON.
 | R25 | The filter icon sits left of the inbox title. | mock |
 | R26 | No messenger badge on list rows (it stays in the thread header and account block). | lint |
 | R27 | Groups of three or more are named after all members and their stacked avatar carries a "+N" badge. | mock |
+| R30 | Sending feels solid: the bubble appears within 150 ms, the stream stays pinned to the newest message at every frame, the placeholder and its stored copy never show together, nothing flashes, the row slides to the top of the list, and a "Sent" line under the newest own message keeps the placeholder→stored swap height-neutral. | mock (50 samples at 50 ms, from a thread not at the top) |
+| R31 | The row hover capsule (labels · snooze · archive) is centered on its row and its icons are centered in it. | mock |
+| R27b | Group avatars pack every face inside one avatar-sized circle (two on a diagonal, three in a triangle); four or more add "+N". | mock + screenshot |
 | R28 | Every conversation row is the same height (two preview lines always reserved) and the avatar is vertically centered. | mock |
 | R29 | Row hover actions are labels · snooze · archive only (pin and note live on the top band). | lint |
 | R6b | The thread header keeps its exact place whether the sidebar is open or collapsed, and is not jammed against the top edge (52pt band). | mock |

@@ -32,7 +32,7 @@ final class UIRulesTests: XCTestCase {
         env["ALLMAN_APPSUPPORT"] = support.path
         env["ALLMAN_UICHECK_OUT"] = out.path
         env["ALLMAN_UICHECK_SHOTS"] = shots.path
-        env["FAKE_SEND_DELAY"] = "0"
+        env["FAKE_SEND_DELAY"] = "1"
         p.environment = env
         p.standardOutput = FileHandle.nullDevice
         p.standardError = FileHandle(forWritingAtPath: "/dev/null")

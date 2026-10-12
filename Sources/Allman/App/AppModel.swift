@@ -6,6 +6,7 @@ import AppKit
 import Foundation
 import Observation
 import ServiceManagement
+import SwiftUI
 import os
 
 private let appLog = Logger(subsystem: "sh.allman.mac", category: "app")
@@ -63,6 +64,11 @@ final class AppModel {
     static let inspectorKey = "inspectorVisible"
     var inspectorVisible: Bool = UserDefaults.standard.bool(forKey: AppModel.inspectorKey) {
         didSet { UserDefaults.standard.set(inspectorVisible, forKey: Self.inspectorKey) }
+    }
+
+    /// Slide the inspector in or out (every toggle goes through here so it animates).
+    func toggleInspector() {
+        withAnimation(.easeInOut(duration: 0.25)) { inspectorVisible.toggle() }
     }
 
     private var lastNotifiedAt: [String: Int64] = [:]

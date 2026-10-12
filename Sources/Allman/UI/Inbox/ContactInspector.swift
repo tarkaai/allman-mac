@@ -23,9 +23,10 @@ struct ContactInspector: View {
                 }
                 links(r)
             }
-            .padding(16)
+            .padding(.horizontal, 16).padding(.top, 2).padding(.bottom, 16)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .contentMargins(.top, 0, for: .scrollContent)
         .scrollEdgeEffectStyle(.soft, for: .top)
     }
 
@@ -45,12 +46,10 @@ struct ContactInspector: View {
                     }
                 }
             }
-            if let line = conn?.roleLine {
-                Label(line, systemImage: "briefcase").font(.callout).lineLimit(3)
-            }
             if let h = r.headline ?? conn?.headline, !h.isEmpty {
                 Text(h).font(.callout).foregroundStyle(.secondary).lineLimit(4).textSelection(.enabled)
             }
+            if let loc = conn?.location, !loc.isEmpty { Label(loc, systemImage: "mappin.and.ellipse").font(.caption).foregroundStyle(.secondary) }
             if let ind = conn?.industry { Label(ind, systemImage: "building.2").font(.caption).foregroundStyle(.secondary) }
             if let c = conn?.connectedAt { Label("Connected \(Fmt.monthDayYear(c))", systemImage: "person.2").font(.caption).foregroundStyle(.secondary) }
         }

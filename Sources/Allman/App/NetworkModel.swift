@@ -45,7 +45,19 @@ final class NetworkModel {
         var count = 0
     }
 
-    enum Tab: String, CaseIterable, Identifiable { case connections = "Connections", invitations = "Invitations sent"; var id: String { rawValue } }
+    enum Tab: String, CaseIterable, Identifiable {
+        case connections = "Connections", enriched = "With profile details", missing = "Missing profile details", invitations = "Invitations sent"
+        var id: String { rawValue }
+        var symbol: String {
+            switch self {
+            case .connections: return "person.2"
+            case .enriched: return "person.text.rectangle"
+            case .missing: return "person.crop.rectangle.badge.questionmark"
+            case .invitations: return "person.badge.plus"
+            }
+        }
+        var isConnectionsList: Bool { self != .invitations }
+    }
     /// Sidebar selection and search for the Network page.
     var tab: Tab = .connections
     var query = ""

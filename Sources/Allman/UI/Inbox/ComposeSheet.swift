@@ -267,7 +267,7 @@ struct DraftThreadView: View {
                 Text("Sent through allman. If you already have a thread on LinkedIn, it will pick that up.")
             }
             .frame(maxHeight: .infinity)
-            ComposerView(convId: recipient.convId, firstName: recipient.name.split(separator: " ").first.map(String.init) ?? recipient.name)
+            ComposerView(convId: recipient.convId, firstName: recipient.name.split(separator: " ").first.map(String.init) ?? recipient.name, autoFocus: true)
         }
         .navigationTitle("")
         .toolbar {

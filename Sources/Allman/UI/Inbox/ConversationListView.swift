@@ -17,7 +17,7 @@ struct ConversationListView: View {
         VStack(spacing: 0) {
             InboxBar()
             SearchField(text: $inbox.searchText, focused: $searchFocused)
-                .padding(.horizontal, 12).padding(.bottom, 6)
+                .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 8)
             Group {
                 if rows.isEmpty && hits.isEmpty && !inbox.isLoading && !showPins && !inbox.searchingMessages {
                     ContentUnavailableView {
@@ -83,9 +83,23 @@ struct ConversationListView: View {
     }
 
     private func row(_ snap: ConversationSnapshot) -> some View {
-        ConversationRow(snapshot: snap, unreadCount: model.inbox.unreadCount(snap))
-            .tag(snap.record.convId)
-            .contextMenu { ConversationActions(convId: snap.record.convId, asMenu: true) }
+        let inbox = model.inbox
+        let id = snap.record.convId
+        return ConversationRow(snapshot: snap, unreadCount: inbox.unreadCount(snap))
+            .tag(id)
+            .contextMenu { ConversationActions(convId: id, asMenu: true) }
+            // Trackpad gestures, Mail-style: swipe right to read/pin, left to archive/snooze/label.
+            .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                if inbox.isUnread(snap) {
+                    Button { inbox.markSeen(id) } label: { Label("Read", systemImage: "envelope.open") }.tint(.blue)
+                }
+                Button { inbox.togglePin(id) } label: { Label(inbox.isPinned(id) ? "Unpin" : "Pin", systemImage: inbox.isPinned(id) ? "pin.slash" : "pin") }.tint(.orange)
+            }
+            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                Button { inbox.toggleArchive(id) } label: { Label(inbox.isArchived(id) ? "Unarchive" : "Archive", systemImage: inbox.isArchived(id) ? "tray.and.arrow.up" : "archivebox") }.tint(.gray)
+                Button { inbox.select(id); inbox.showSnoozePicker = true } label: { Label("Snooze", systemImage: "clock") }.tint(.purple)
+                Button { inbox.select(id); inbox.showLabelPicker = true } label: { Label("Label", systemImage: "tag") }.tint(.indigo)
+            }
     }
 
     /// j/k move, e archive, h snooze, l label, n note, u unread view, i details.
@@ -99,7 +113,7 @@ struct ConversationListView: View {
         case "l": if inbox.selectedConvId != nil { inbox.showLabelPicker = true }; return true
         case "n": if inbox.selectedConvId != nil { inbox.showNoteEditor = true }; return true
         case "u": inbox.filter = inbox.filter == .unread ? .all : .unread; return true
-        case "i": model.inspectorVisible.toggle(); return true
+        case "i": model.toggleInspector(); return true
         default: return false
         }
     }
@@ -204,10 +218,11 @@ struct InboxBar: View {
 
     var body: some View {
         @Bindable var inbox = model.inbox
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .center, spacing: 2) {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 0) {
                 Text(title(inbox.filter)).font(AFont.title).lineLimit(1).frame(height: 22)
                 Spacer(minLength: 8)
+                HStack(spacing: 2) {
                 Menu {
                     Picker("Filter", selection: $inbox.filter) {
                         ForEach(InboxModel.Filter.builtIn) { f in Label(f.title, systemImage: f.symbol).tag(f) }
@@ -221,7 +236,8 @@ struct InboxBar: View {
                 } label: {
                     BarIcon(inbox.filter == .all || inbox.filter.isLabel ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill")
                 }
-                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
+                .frame(width: 24, height: 22)
                 .help("Filter: \(inbox.filter.title)")
                 Button { creatingLabel = true } label: { BarIcon("tag.badge.plus") }
                     .buttonStyle(.plain)
@@ -237,10 +253,11 @@ struct InboxBar: View {
                         .onAppear { let used = Set(inbox.organizer.labels.map(\.icon)); newIcon = InboxLabel.icons.first { !used.contains($0) } ?? "tag" }
                     }
                 ConversationActions(convId: inbox.selectedConvId, asMenu: false)
-                Button { NotificationCenter.default.post(name: .allmanCompose, object: nil) } label: { BarIcon("square.and.pencil", prominent: true) }
+                Button { NotificationCenter.default.post(name: .allmanCompose, object: nil) } label: { BarIcon("square.and.pencil") }
                     .buttonStyle(.plain)
                     .help("New message (⌘N)")
                     .keyboardShortcut("n", modifiers: .command)
+                }
             }
             FlowLayout(spacing: 4) {
                 chip("All", symbol: "tray.full", filter: .all, count: 0)
@@ -257,7 +274,7 @@ struct InboxBar: View {
                 }
             }
         }
-        .padding(.horizontal, 12).padding(.bottom, 8)
+        .padding(.horizontal, 12)
     }
 
     private func chip(_ name: String, symbol: String, filter: InboxModel.Filter, count: Int) -> some View {
@@ -461,8 +478,9 @@ struct ConversationRow: View {
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
-        .onHover { hovering = $0 }
-        // Actions ride over the time stamp on hover: no layout shift.
+        // Actions ride over the time stamp on hover: no layout shift. The hover
+        // region is the composed row *including* the overlay, so moving onto a
+        // button doesn't count as leaving the row.
         .overlay(alignment: .topTrailing) {
             if hovering {
                 RowActions(convId: r.convId)
@@ -471,6 +489,7 @@ struct ConversationRow: View {
                     .transition(.opacity)
             }
         }
+        .onHover { hovering = $0 }
     }
 }
 

@@ -197,6 +197,10 @@ enum DebugSnapshots {
                 model.show(.network)
                 try? await Task.sleep(for: .seconds(4))
                 capture(w, to: out.appendingPathComponent("network.png"))
+                model.network.tab = .missing
+                try? await Task.sleep(for: .seconds(1.5))
+                capture(w, to: out.appendingPathComponent("network-missing.png"))
+                model.network.tab = .connections
                 model.show(.settings)
                 try? await Task.sleep(for: .seconds(2))
                 capture(w, to: out.appendingPathComponent("settings-inline.png"))

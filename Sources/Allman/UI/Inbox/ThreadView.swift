@@ -21,6 +21,8 @@ struct ThreadView: View {
     static let pageSize = 300
     /// A search hit the thread just jumped to; its bubble glows briefly.
     @State private var highlightedUrn: String?
+    /// Scrolled to (near) the newest message. A width change (inspector, resize) re-pins when true.
+    @State private var atBottom = true
 
     private enum Row: Identifiable {
         case stamp(Date)
@@ -105,7 +107,15 @@ struct ThreadView: View {
                     }
                     .padding(.horizontal, 16).padding(.vertical, 10)
                 }
-                .scrollEdgeEffectStyle(.soft, for: .top)
+                .contentMargins(.top, 14, for: .scrollContent)
+                .scrollEdgeEffectStyle(.hard, for: .top)
+                .onScrollGeometryChange(for: Bool.self) { g in
+                    g.contentOffset.y + g.containerSize.height >= g.contentSize.height - 48
+                } action: { _, near in atBottom = near }
+                .onChange(of: geo.size.width) { _, _ in
+                    // Bubbles re-wrap when the pane changes width; stay on the newest message if we were there.
+                    if atBottom { slideToBottom(proxy, .easeInOut(duration: 0.2)) }
+                }
                 // Bottom-anchored, not scrolled-to: the scroll view is rebuilt once the
                 // thread has content, so its initial offset is the newest message, and
                 // the bottom stays anchored while images and previews grow the content
@@ -144,16 +154,12 @@ struct ThreadView: View {
             }
             ComposerView(convId: convId, firstName: snapshot.record.firstName ?? snapshot.record.displayName)
         }
-        .inspector(isPresented: Binding(get: { model.inspectorVisible }, set: { model.inspectorVisible = $0 })) {
-            ContactInspector(snapshot: snapshot)
-                .inspectorColumnWidth(min: 250, ideal: 300, max: 400)
-        }
         .navigationTitle("")
         .toolbar {
             ToolbarItem(placement: .navigation) { PersonHeader(snapshot: snapshot) }
                 .sharedBackgroundVisibility(.hidden)
             ToolbarItem(placement: .primaryAction) {
-                Button { model.inspectorVisible.toggle() } label: { Label("Contact Details", systemImage: model.inspectorVisible ? "info.circle.fill" : "info.circle") }
+                Button { model.toggleInspector() } label: { Label("Contact Details", systemImage: model.inspectorVisible ? "info.circle.fill" : "info.circle") }
                     .help(model.inspectorVisible ? "Hide contact details (⌥⌘I)" : "Show contact details (⌥⌘I)")
             }
         }
@@ -249,7 +255,7 @@ struct PersonHeader: View {
             line1: brief,
             line2: conn?.location,
             line2Symbol: "mappin.and.ellipse",
-            onTap: { model.inspectorVisible.toggle() }
+            onTap: { model.toggleInspector() }
         )
         .help("Contact details (⌥⌘I)")
     }

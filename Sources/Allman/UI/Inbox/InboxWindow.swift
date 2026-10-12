@@ -64,8 +64,6 @@ struct SidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ExperienceSwitcher()
-                .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 8)
             Group {
                 switch model.experience {
                 case .messenger: ConversationListView()
@@ -75,8 +73,11 @@ struct SidebarView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.top, 4)
             ProfileHeader()
         }
+        // On the toolbar row, beside the sidebar toggle.
+        .toolbar { ToolbarItem(placement: .automatic) { ExperienceSwitcher() } }
     }
 }
 
@@ -85,8 +86,7 @@ struct ExperienceSwitcher: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        @Bindable var model = model
-        Picker("Experience", selection: $model.experience) {
+        Picker("Experience", selection: Binding(get: { model.experience }, set: { e in withAnimation(.easeInOut(duration: 0.25)) { model.experience = e } })) {
             ForEach(AppModel.Experience.allCases) { e in
                 Label(e.title, systemImage: e.symbol).tag(e)
             }
@@ -95,7 +95,7 @@ struct ExperienceSwitcher: View {
         .labelsHidden()
         .labelStyle(.iconOnly)
         .controlSize(.regular)
-        .frame(maxWidth: .infinity)
+        .fixedSize()
         .help("Messenger ⌘1 · Network ⌘2 · Insights ⌘3 · Settings ⌘4")
     }
 }
@@ -134,17 +134,38 @@ struct PageHeader: View {
                 }
             }
         }
-        .frame(maxWidth: 520, alignment: .leading)
+        // A fixed ideal width: toolbar items are measured at their ideal size, and a
+        // long headline would otherwise push the whole row into the » overflow.
+        .frame(minWidth: 160, idealWidth: 360, maxWidth: 520, alignment: .leading)
         .contentShape(Rectangle())
         .onTapGesture { onTap?() }
     }
 }
 
-/// The messenger's detail: the open thread, a draft, or the empty state.
+/// The messenger's detail: the open thread, a draft, or the empty state. The
+/// contact inspector hangs off this container (not the thread) so opening it
+/// never rebuilds the split view.
 struct MessengerDetail: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
+        let inbox = model.inbox
+        content
+            .inspector(isPresented: Binding(get: { model.inspectorVisible }, set: { v in withAnimation(.easeInOut(duration: 0.25)) { model.inspectorVisible = v } })) {
+                Group {
+                    if let snap = inbox.selected {
+                        ContactInspector(snapshot: snap).id(snap.record.convId)
+                    } else {
+                        ContentUnavailableView("No conversation", systemImage: "person.crop.circle", description: Text("Select a conversation to see who you're talking to."))
+                    }
+                }
+                .inspectorColumnWidth(min: 250, ideal: 300, max: 400)
+            }
+            .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
+    }
+
+    @ViewBuilder
+    private var content: some View {
         let inbox = model.inbox
         if let draft = inbox.draft {
             DraftThreadView(recipient: draft).id(draft.convId)

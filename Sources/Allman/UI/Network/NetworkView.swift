@@ -23,10 +23,15 @@ struct NetworkSidebar: View {
                 .tag(NetworkModel.Tab.invitations)
                 Section("Profile details") {
                     let enriched = inbox.connections.filter(\.isEnriched).count
-                    LabeledContent("Enriched", value: enriched.formatted())
-                    LabeledContent("Missing", value: (inbox.connections.count - enriched).formatted())
+                    Label {
+                        HStack { Text("Enriched"); Spacer(); Text(enriched.formatted()).foregroundStyle(.secondary).monospacedDigit() }
+                    } icon: { Image(systemName: NetworkModel.Tab.enriched.symbol) }
+                    .tag(NetworkModel.Tab.enriched)
+                    Label {
+                        HStack { Text("Missing"); Spacer(); Text((inbox.connections.count - enriched).formatted()).foregroundStyle(.secondary).monospacedDigit() }
+                    } icon: { Image(systemName: NetworkModel.Tab.missing.symbol) }
+                    .tag(NetworkModel.Tab.missing)
                 }
-                .font(AFont.body)
             }
             .listStyle(.sidebar)
             .contentMargins(.top, 0, for: .scrollContent)
@@ -64,15 +69,12 @@ struct NetworkDetail: View {
         let inbox = model.inbox
         let net = model.network
         Group {
-            switch net.tab {
-            case .connections: connectionsTable(inbox)
-            case .invitations: invitationsTable(net)
-            }
+            if net.tab.isConnectionsList { connectionsTable(inbox) } else { invitationsTable(net) }
         }
         .navigationTitle("")
         .toolbar {
             ToolbarItem(placement: .navigation) {
-                PageHeader(symbol: net.tab == .connections ? "person.2" : "person.badge.plus", title: net.tab.rawValue, line1: subtitle(inbox, net), line2: net.query.isEmpty ? nil : "\(filtered.count.formatted()) match “\(net.query)”")
+                PageHeader(symbol: net.tab.symbol, title: net.tab.rawValue, line1: subtitle(inbox, net), line2: net.query.isEmpty ? nil : "\(filtered.count.formatted()) match “\(net.query)”")
             }
             .sharedBackgroundVisibility(.hidden)
             ToolbarItemGroup(placement: .primaryAction) {
@@ -109,12 +111,26 @@ struct NetworkDetail: View {
         let all = inbox.connections
         guard !all.isEmpty else { return "No connections stored yet" }
         let enriched = all.filter(\.isEnriched).count
-        return "\(all.count.formatted()) connections · \(enriched.formatted()) with profile details"
+        switch net.tab {
+        case .enriched: return "\(enriched.formatted()) of \(all.count.formatted()) connections have title, company, location and about"
+        case .missing: return "\((all.count - enriched).formatted()) connections still need allman enrich"
+        default: return "\(all.count.formatted()) connections · \(enriched.formatted()) with profile details"
+        }
+    }
+
+    /// The tab's subset of the store, then the search.
+    private var scoped: [Connection] {
+        let all = model.inbox.connections
+        switch model.network.tab {
+        case .enriched: return all.filter(\.isEnriched)
+        case .missing: return all.filter { !$0.isEnriched }
+        default: return all
+        }
     }
 
     private var filtered: [Connection] {
         let q = model.network.query.trimmingCharacters(in: .whitespaces)
-        let all = model.inbox.connections
+        let all = scoped
         guard !q.isEmpty else { return all.sorted(using: sortOrder) }
         var scores: [String: Int] = [:]
         let rows = all.filter { c in

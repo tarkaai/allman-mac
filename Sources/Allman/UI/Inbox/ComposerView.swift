@@ -6,6 +6,8 @@ struct ComposerView: View {
     @Environment(AppModel.self) private var model
     let convId: String
     let firstName: String
+    /// Drafts open with the field focused; a thread keeps focus on the list (selection stays active).
+    var autoFocus = false
 
     @State private var text = ""
     @FocusState private var focused: Bool
@@ -92,7 +94,7 @@ struct ComposerView: View {
             .overlay(RoundedRectangle(cornerRadius: 19, style: .continuous).stroke(Color(nsColor: .separatorColor)))
         }
         .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 10)
-        .onAppear { focused = true }
+        .onAppear { if autoFocus { focused = true } }
         .onChange(of: model.inbox.focusToken) { _, _ in
             if model.inbox.focusTarget == .composer { focused = true }
         }

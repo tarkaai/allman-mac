@@ -97,7 +97,7 @@ struct AllmanApp: App {
                 Button("Show Unread Only") { model.inbox.filter = model.inbox.filter == .unread ? .all : .unread }
                     .keyboardShortcut("u", modifiers: [.command, .shift])
                 Divider()
-                Button(model.inspectorVisible ? "Hide Contact Details" : "Show Contact Details") { model.inspectorVisible.toggle() }
+                Button(model.inspectorVisible ? "Hide Contact Details" : "Show Contact Details") { model.toggleInspector() }
                     .keyboardShortcut("i", modifiers: [.command, .option])
                 Button("Open Thread on LinkedIn") {
                     if let url = model.inbox.selected?.record.linkedInThreadURL { NSWorkspace.shared.open(url) }

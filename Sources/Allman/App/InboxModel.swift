@@ -60,7 +60,13 @@ final class InboxModel {
     var organizer: Organizer { didSet { recompute() } }
     var selectedConvId: String? { didSet { recompute() } }
     var searchText = "" { didSet { recompute(); scheduleMessageSearch() } }
-    var filter: Filter = .all { didSet { recompute() } }
+    var filter: Filter = .all {
+        didSet {
+            // A thread that isn't in the new inbox must not stay open as if it were.
+            if let id = selectedConvId, let snap = byId[id], !belongs(snap, to: filter) { select(nil) }
+            recompute()
+        }
+    }
     /// Full-text hits across every stored message for the current search (3+ chars).
     private(set) var messageHits: [MessageHit] = []
     private(set) var searchingMessages = false
@@ -126,16 +132,7 @@ final class InboxModel {
             // Pinned threads live in the grid while browsing; searching/filtering shows them in the list.
             if browsing && pinSet.contains(snap.record.convId) && snap.record.convId != selectedConvId { return false }
             if snap.record.convId == selectedConvId { return q.isEmpty || matches(snap, q) }
-            switch filter {
-            case .all: if q.isEmpty && tucked(snap) { return false }
-            case .unread: if !readState.isUnread(snap) || tucked(snap) { return false }
-            case .needsReply: if snap.lastMessage?.isFromMe != false || tucked(snap) { return false }
-            case .awaitingReply: if snap.lastMessage?.isFromMe != true || tucked(snap) { return false }
-            case .firstDegree: if snap.record.distance != "DISTANCE_1" || tucked(snap) { return false }
-            case .reminders: if organizer.snooze(snap.record.convId) == nil { return false }
-            case .archived: if !organizer.isArchived(snap) { return false }
-            case .label(let id): if !organizer.has(label: id, snap.record.convId) || organizer.isArchived(snap) { return false }
-            }
+            if !(q.isEmpty ? belongs(snap, to: filter, now: now) : belongsWhileSearching(snap, to: filter, now: now)) { return false }
             if q.isEmpty { return true }
             let score = rank(snap, q)
             if score > 0 { scores[snap.record.convId] = score }
@@ -274,6 +271,27 @@ final class InboxModel {
         for id in due {
             if let snap = byId[id], let s = organizer.snooze(id) { onReminderDue?(snap, s) }
         }
+    }
+
+    /// Membership in an inbox view (archived/snoozed threads are tucked away except in their own views).
+    func belongs(_ snap: ConversationSnapshot, to filter: Filter, now: Date = Date()) -> Bool {
+        let tucked = organizer.isArchived(snap) || organizer.isSnoozed(snap, now: now)
+        switch filter {
+        case .all: return !tucked
+        case .unread: return readState.isUnread(snap) && !tucked
+        case .needsReply: return snap.lastMessage?.isFromMe == false && !tucked
+        case .awaitingReply: return snap.lastMessage?.isFromMe == true && !tucked
+        case .firstDegree: return snap.record.distance == "DISTANCE_1" && !tucked
+        case .reminders: return organizer.snooze(snap.record.convId) != nil
+        case .archived: return organizer.isArchived(snap)
+        case .label(let id): return organizer.has(label: id, snap.record.convId) && !organizer.isArchived(snap)
+        }
+    }
+
+    /// While searching, All also surfaces tucked-away threads.
+    private func belongsWhileSearching(_ snap: ConversationSnapshot, to filter: Filter, now: Date) -> Bool {
+        if filter == .all { return true }
+        return belongs(snap, to: filter, now: now)
     }
 
     private func matches(_ snap: ConversationSnapshot, _ q: String) -> Bool { rank(snap, q) > 0 }

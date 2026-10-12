@@ -20,14 +20,13 @@ done
 ok "R8 every main-window column uses the .soft edge effect"
 # R5: the contact panel is a column in the detail, never the system inspector (it squeezes the split view).
 if command grep -rn "\.inspector(" Sources >/dev/null; then bad "R5 .inspector( found"; else ok "R5 no system inspector"; fi
-# R5/R6: toolbar items are declared in the page containers only — never per thread or in the panel.
-for f in $ui/Inbox/ThreadView.swift $ui/Inbox/ContactInspector.swift $ui/Inbox/ConversationListView.swift; do
-  command grep -q "\.toolbar {" "$f" && bad "R5 $f declares toolbar items (must live in InboxWindow/page views)" || true
-done
-ok "R5 toolbar items only in page containers"
-# R4: our own sidebar toggle at the far left, the system one removed.
-command grep -q "toolbar(removing: .sidebarToggle)" $ui/Inbox/InboxWindow.swift && ok "R4 system sidebar toggle removed" || bad "R4 system sidebar toggle not removed"
+# R5/R6: the app draws its own chrome — no system toolbar items anywhere (they re-flow, overflow and wash content).
+if command grep -rn "\.toolbar {\|ToolbarItem(" Sources >/dev/null; then bad "R5 system toolbar items found"; else ok "R5 no system toolbar items"; fi
+command grep -q "windowStyle(.hiddenTitleBar)" Sources/Allman/App/AllmanApp.swift && ok "R5 hidden title bar (chrome is ours)" || bad "R5 title bar not hidden"
+# R4: our own sidebar toggle, fixed at the top-left.
 command grep -q 'uiProbe("sidebar-toggle")' $ui/Inbox/InboxWindow.swift && ok "R4 own toggle present" || bad "R4 own toggle missing"
+# R15b: the selected conversation is highlighted edge to edge (plain list style, not the inset sidebar style).
+command grep -q "listStyle(.plain)" $ui/Inbox/ConversationListView.swift && ! command grep -q "listStyle(.sidebar)" $ui/Inbox/ConversationListView.swift && ok "R15b full-width selection (plain list)" || bad "R15b conversation list must use .plain"
 # R13: one window — no Settings scene, no extra Window scenes.
 app=Sources/Allman/App/AllmanApp.swift
 if command grep -nE "^\s*Settings \{|Settings\(" "$app" >/dev/null; then bad "R13 Settings scene found"; else ok "R13 no Settings scene"; fi

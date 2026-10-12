@@ -19,6 +19,7 @@ struct AllmanApp: App {
                 .environment(model)
         }
         .defaultSize(width: 1080, height: 700)
+        .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)
         .handlesExternalEvents(matching: ["inbox"])
         .commands {

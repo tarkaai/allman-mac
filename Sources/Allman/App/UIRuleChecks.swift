@@ -46,6 +46,7 @@ enum UIRuleChecks {
         try await wait("window", 10) { window() != nil }
         let w = window()!
         w.setContentSize(NSSize(width: 1080, height: 700)); w.center()
+        if model.isSidebarCollapsed { model.toggleSidebar() }
         // Away from the real pointer: a hand resting on the trackpad must not swipe a row.
         if let screen = w.screen ?? NSScreen.main {
             let mouse = NSEvent.mouseLocation
@@ -65,7 +66,8 @@ enum UIRuleChecks {
         if let toggle = ax(w, "sidebar-toggle"), let switcher = ax(w, "experience-switcher") {
             check("R4", "sidebar toggle is left of the experience switcher", toggle.minX < switcher.minX, "toggle.x=\(Int(toggle.minX)) switcher.x=\(Int(switcher.minX))")
             check("R4", "toggle is the leftmost control after the window buttons", toggle.minX < 120, "x=\(Int(toggle.minX))")
-            check("R1", "chrome bar sits on the toolbar row", y(toggle).top < 60 && y(switcher).top < 60, "toggle.top=\(Int(y(toggle).top)) switcher.top=\(Int(y(switcher).top))")
+            check("R1", "chrome bar sits on the top band", y(toggle).top < Chrome.barHeight && y(switcher).top < Chrome.barHeight, "toggle.top=\(Int(y(toggle).top)) switcher.top=\(Int(y(switcher).top))")
+            if let sb = ax(w, "sidebar") { check("R3b", "sidebar is full height, over the top band", sb.minY < 1 && w.frame.height - sb.maxY < 1, "sidebar=\(Int(sb.minY))…\(Int(sb.maxY))") }
         } else {
             check("R4", "chrome bar present (sidebar-toggle + experience-switcher)", false, "missing AX elements")
         }
@@ -110,12 +112,11 @@ enum UIRuleChecks {
 
         // --- R6: thread header on the toolbar row; R5: exactly one `i`, far right.
         if let header = ax(w, "thread-header") {
-            check("R6", "thread header on the toolbar row, left of the detail", y(header).top < 60, "top=\(Int(y(header).top))")
+            check("R6", "thread header on the top band, left of the detail", y(header).top < Chrome.barHeight, "top=\(Int(y(header).top))")
         } else { check("R6", "thread header present while the panel is closed", false) }
         let toggles = axAll(w, "inspector-toggle")
         check("R5", "exactly one contact-panel toggle while closed", toggles.count == 1, "count=\(toggles.count)")
         if toggles.isEmpty { dump(w, to: shots); return checks }
-        guard let iButton = toolbarItemFrame(w, label: "Contact Details") else { check("R5", "the `i` toolbar item exists", false); return checks }
         let closedX = toggles.first?.midX ?? 0
         check("R5", "the `i` is at the far right of the window", toggles.first.map { w.frame.width - $0.maxX < 40 } ?? false, "gap=\(Int(w.frame.width - (toggles.first?.maxX ?? 0)))")
         check("R5", "no » overflow on the toolbar", !hasOverflow(w), "")
@@ -129,7 +130,7 @@ enum UIRuleChecks {
         check("R17", "thread scrolled to the newest message on open", b0.0, b0.1)
 
         // --- R5: clicking the `i` opens the panel (it is clickable); still one `i`, same place.
-        clickWindowRect(iButton, in: w)
+        clickProbe("inspector-toggle", in: w)
         try await sleep(700)
         shot("02-panel-open")
         check("R5", "clicking the `i` opens the panel", model.inspectorVisible)
@@ -140,15 +141,15 @@ enum UIRuleChecks {
         check("R5", "no » overflow with the panel open", !hasOverflow(w))
         check("R6", "thread header hidden while the panel is open", ax(w, "thread-header") == nil)
         if let ph = ax(w, "inspector-header"), let col = ax(w, "inspector-column") {
-            check("R7", "panel header on the toolbar row", y(ph).top < 60, "top=\(Int(y(ph).top))")
+            check("R7", "panel header on the top band", y(ph).top < Chrome.barHeight, "top=\(Int(y(ph).top))")
             check("R7", "panel header aligned over the panel", abs(ph.minX - col.minX) < 24 && ph.maxX <= (openToggles.first?.minX ?? .infinity), "header.x=\(Int(ph.minX)) column.x=\(Int(col.minX))")
-            check("R7", "panel body starts below the header (it scrolls; the header stays)", y(col).top >= 40, "column.top=\(Int(y(col).top))")
+            check("R7", "panel body starts under its header on the top band", y(col).top <= Chrome.barHeight + 1, "column.top=\(Int(y(col).top))")
         } else { check("R7", "panel header + column present", false, "missing AX elements") }
         let b1 = threadAtBottom()
         check("R17", "thread still at the newest message after the panel opened", b1.0, b1.1)
 
         // --- R5: clicking again closes it.
-        if let t = toolbarItemFrame(w, label: "Contact Details") { clickWindowRect(t, in: w) } else { model.toggleInspector() }
+        clickProbe("inspector-toggle", in: w)
         try await sleep(700)
         check("R5", "clicking the `i` again closes the panel", !model.inspectorVisible)
         check("R5", "one `i`, same place, after closing", axAll(w, "inspector-toggle").count == 1 && abs((ax(w, "inspector-toggle")?.midX ?? -99) - closedX) < 2)
@@ -179,7 +180,7 @@ enum UIRuleChecks {
         try await sleep(1200)
         shot("04-nav-down")
         if let sel = model.inbox.selectedConvId, let row = ax(w, "row-\(sel)") {
-            check("R9", "after 18 steps the selected row is on screen", row.minY >= listF.minY - 1 && row.maxY <= listF.maxY + 1, "row=\(Int(row.minY))…\(Int(row.maxY)) list=\(Int(listF.minY))…\(Int(listF.maxY))")
+            check("R9", "after 18 steps the selected row is on screen", row.minY >= listF.minY - 1 && row.maxY <= listF.maxY + 1, "row=\(Int(row.minY))…\(Int(row.maxY)) list=\(Int(listF.minY))…\(Int(listF.maxY)) profile=\(ax(w, "profile-header").map { "\(Int($0.minY))…\(Int($0.maxY))" } ?? "-")")
         } else { check("R9", "selected row visible after 18 steps", false, "row probe not found (off screen)") }
         for _ in 0..<6 { model.inbox.selectPrevious(); try await sleep(50) }
         try await sleep(900)
@@ -203,13 +204,13 @@ enum UIRuleChecks {
         if let group = model.inbox.snapshots.first(where: { $0.record.isGroupThread }) {
             let r = group.record
             check("R12", "group thread is in the list", model.inbox.filtered.contains { $0.record.convId == r.convId } && ax(w, "row-\(r.convId)") != nil || model.inbox.filtered.contains { $0.record.convId == r.convId })
-            check("R12", "group named after its members", r.displayName == "Casey Example, AJ Sample", r.displayName)
+            check("R12", "group named after its members", r.displayName == "Priya Example, Theo Sample", r.displayName)
             check("R12", "group sends to the bare conversation id", r.sendTarget == r.convId, r.sendTarget)
             model.inbox.select(r.convId)
             try await sleep(1500)
             shot("06-group")
             check("R12", "sender names shown in the group thread", !axAll(w, "sender-caption").isEmpty, "captions=\(axAll(w, "sender-caption").count)")
-            if let header = ax(w, "thread-header") { check("R12", "group header on the toolbar row", y(header).top < 60) }
+            if let header = ax(w, "thread-header") { check("R12", "group header on the top band", y(header).top < Chrome.barHeight) }
         } else { check("R12", "mock store has a group thread", false) }
 
         // --- R13: Settings / Network / Insights live in the same window.
@@ -223,19 +224,42 @@ enum UIRuleChecks {
         check("R13", "Network inside the main window", visibleWindows().count == windowsBefore)
         model.show(.messenger); try await sleep(600)
 
-        // --- R4: collapsing the sidebar keeps the chrome bar order.
-        DebugSnapshots.sendKeyEquivalent("s", modifiers: [.control, .command], to: w)
+        // --- R4: collapsing the sidebar leaves the chrome bar exactly where it is; R13b: per-page memory, Settings never collapses.
+        let toggleBefore = ax(w, "sidebar-toggle"); let switcherBefore = ax(w, "experience-switcher")
+        model.toggleSidebar()
         try await sleep(900)
         shot("09-collapsed")
-        if let toggle = ax(w, "sidebar-toggle"), let switcher = ax(w, "experience-switcher") {
-            check("R4", "collapsed: toggle still left of the switcher", toggle.minX < switcher.minX, "toggle.x=\(Int(toggle.minX)) switcher.x=\(Int(switcher.minX))")
-                check("R4", "collapsed: toggle is the leftmost control", toggle.minX < 120)
-            check("R4", "collapsed: no » overflow", !hasOverflow(w))
+        check("R4", "sidebar collapses (slid out to the left)", model.isSidebarCollapsed && (ax(w, "sidebar").map { $0.maxX < 2 } ?? true) && (ax(w, "conversation-list")?.maxX ?? 0) < 2, "sidebar.maxX=\(Int(ax(w, "sidebar")?.maxX ?? 0))")
+        if let t = ax(w, "sidebar-toggle"), let s = ax(w, "experience-switcher"), let t0 = toggleBefore, let s0 = switcherBefore {
+            check("R4", "collapsed: toggle and switcher did not move", abs(t.minX - t0.minX) < 1 && abs(t.minY - t0.minY) < 1 && abs(s.minX - s0.minX) < 1, "toggle \(Int(t0.minX))→\(Int(t.minX)) switcher \(Int(s0.minX))→\(Int(s.minX))")
         } else { check("R4", "collapsed: chrome bar present", false) }
-        DebugSnapshots.sendKeyEquivalent("s", modifiers: [.control, .command], to: w)
-        try await sleep(900)
-        check("R4", "expanded again: chrome bar back in the sidebar", ax(w, "sidebar-toggle") != nil && ax(w, "conversation-list") != nil)
+        if let header = ax(w, "thread-header") { check("R4", "collapsed: thread header clears the chrome bar", header.minX >= (ax(w, "experience-switcher")?.maxX ?? 0) + 8, "header.x=\(Int(header.minX))") }
+        check("R5", "collapsed: the `i` stayed put", abs((ax(w, "inspector-toggle")?.midX ?? -99) - closedX) < 2)
+        model.show(.network); try await sleep(700)
+        check("R13b", "Network remembers its own sidebar state (not collapsed)", !model.isSidebarCollapsed)
+        model.show(.settings); try await sleep(700)
+        shot("09b-settings")
+        model.toggleSidebar(); try await sleep(300)
+        check("R13b", "Settings never collapses the sidebar", !model.isSidebarCollapsed && !model.canCollapseSidebar)
+        model.show(.messenger); try await sleep(700)
+        check("R13b", "Messenger comes back collapsed, as left", model.isSidebarCollapsed)
+        model.toggleSidebar(); try await sleep(900)
+        check("R4", "expanded again: sidebar back", !model.isSidebarCollapsed && (ax(w, "sidebar")?.width ?? 0) > 300)
         shot("10-expanded")
+
+        // --- R12b: two recipients in a new message make a group thread (through the CLI).
+        let a = DraftRecipient(slug: "nova-example", name: "Nova Example", headline: nil, avatarURL: nil)
+        let b = DraftRecipient(slug: "kit-example", name: "Kit Example", headline: nil, avatarURL: nil)
+        model.inbox.startDraft(a)
+        model.inbox.addDraftRecipient(b)
+        try await sleep(600)
+        shot("11-group-draft")
+        check("R12b", "draft lists both recipients", model.inbox.draftRecipients.count == 2 && ax(w, "draft-chip-kit-example") != nil)
+        let sent = await model.inbox.send("Group hello", to: a.convId)
+        try await sleep(1200)
+        shot("12-group-sent")
+        let sel = model.inbox.selected?.record
+        check("R12b", "send created a group thread and opened it", sent && sel?.isGroupThread == true && Set(["nova-example", "kit-example"]).isSubset(of: Set(sel?.members.compactMap(\.slug) ?? [])), "sent=\(sent) selected=\(sel?.displayName ?? "nil")")
         if let shots { try? UIProbeRegistry.dump.joined(separator: "\n").write(to: shots.appendingPathComponent("probes.txt"), atomically: true, encoding: .utf8) }
         return checks
     }
@@ -336,6 +360,12 @@ enum UIRuleChecks {
     static func scrollDebug(_ s: NSScrollView) -> String {
         let v = s.contentView.bounds
         return "visible=\(Int(v.minY))…\(Int(v.maxY)) doc=\(Int(s.documentView?.frame.height ?? 0)) flipped=\(s.documentView?.isFlipped ?? false)"
+    }
+
+    /// Click a probe (top-down frame → window base coordinates).
+    static func clickProbe(_ id: String, in w: NSWindow) {
+        guard let r = ax(w, id) else { return }
+        clickWindowRect(CGRect(x: r.minX, y: w.frame.height - r.maxY, width: r.width, height: r.height), in: w)
     }
 
     /// A real click (down + up through the app's event path) at the center of a window-coordinate rect (bottom-up).

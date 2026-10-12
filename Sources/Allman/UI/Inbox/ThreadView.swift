@@ -145,6 +145,9 @@ struct ThreadView: View {
                 // afterwards. No programmatic scrolling on open at all.
                 .id(messages.isEmpty ? "empty" : "loaded")
                 .scrollPosition($position)
+                // While the panel slides, the thread follows the width frame by frame — no
+                // crossfading text at a different pace than the bubbles.
+                .transaction { t in if model.panelAnimating { t.animation = nil } }
                 .defaultScrollAnchor(.bottom)
                 // While at the newest message, any size change (a panel opening, the window
                 // resizing, the composer growing) keeps it there — anchored, not re-scrolled.
@@ -180,7 +183,6 @@ struct ThreadView: View {
             }
             ComposerView(convId: convId, firstName: snapshot.record.shortName)
         }
-        .navigationTitle("")
     }
 
     /// Scrolls after the new row has been laid out, so the offset change itself

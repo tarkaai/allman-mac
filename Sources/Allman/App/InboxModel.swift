@@ -690,7 +690,27 @@ final class InboxModel {
     private var connectionsLoaded = false
     private var connectionsReloadScheduled = false
     /// A recipient with no local thread yet; shown in place of the selected conversation.
-    var draft: DraftRecipient? { didSet { recompute() } }
+    var draft: DraftRecipient? { didSet { if draft == nil { draftOthers = [] }; recompute() } }
+    /// Further recipients of the draft: more than one makes it a new group thread.
+    var draftOthers: [DraftRecipient] = [] { didSet { recompute() } }
+    var draftRecipients: [DraftRecipient] { (draft.map { [$0] } ?? []) + draftOthers }
+
+    /// Another person for the open draft (starts one when none is open).
+    func addDraftRecipient(_ r: DraftRecipient) {
+        guard let first = draft else { startDraft(r); return }
+        guard first.slug != r.slug, !draftOthers.contains(where: { $0.slug == r.slug }) else { return }
+        draftOthers.append(r)
+    }
+
+    func removeDraftRecipient(_ slug: String) {
+        if draft?.slug == slug {
+            let rest = draftOthers
+            draft = rest.first
+            draftOthers = Array(rest.dropFirst())
+        } else {
+            draftOthers.removeAll { $0.slug == slug }
+        }
+    }
 
     func loadConnectionsIfNeeded() {
         guard !connectionsLoaded else { return }
@@ -867,21 +887,27 @@ final class InboxModel {
     /// profile, finds or creates the LinkedIn thread, and writes the record.
     private func sendDraft(_ body: String, context ctx: AllmanRunner.Context) async -> Bool {
         guard let recipient = draft else { return false }
+        let recipients = draftRecipients
         isSending = true
         composerError = nil
         defer { isSending = false }
         do {
-            let result = try await AllmanRunner.runJSON(["send", recipient.slug, body, "--json"], as: SendResult.self, context: ctx, timeout: 90)
+            // Several recipients: the CLI creates a group thread (allman send a,b,c).
+            let target = recipients.map(\.slug).joined(separator: ",")
+            let result = try await AllmanRunner.runJSON(["send", target, body, "--json"], as: SendResult.self, context: ctx, timeout: 90)
             let convUrn = result.conversationUrn ?? ""
             let bare = Self.bareConversationId(convUrn)
             await reloadAll()
             draft = nil
             if let bare, byId[bare] != nil {
                 select(bare)
-            } else if let found = snapshots.first(where: { $0.record.slug == recipient.slug }) {
+            } else if recipients.count == 1, let found = snapshots.first(where: { $0.record.slug == recipient.slug }) {
                 select(found.record.convId)
+            } else if recipients.count > 1 {
+                let slugs = Set(recipients.map(\.slug))
+                if let found = snapshots.first(where: { $0.record.isGroupThread && slugs.isSubset(of: Set($0.record.members.compactMap(\.slug))) }) { select(found.record.convId) }
             }
-            toast = "Sent to \(recipient.name)"
+            toast = recipients.count > 1 ? "Sent to \(recipients.count) people" : "Sent to \(recipient.name)"
             return true
         } catch let err as AllmanError {
             if err.stderr.contains("not found on LinkedIn") {

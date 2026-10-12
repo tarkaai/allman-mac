@@ -34,9 +34,7 @@ struct ContactInspector: View {
         }
         .scrollEdgeEffectStyle(.soft, for: .top)
         .uiProbe("inspector-body")
-        // The header is a toolbar item above this column (MessengerDetail); the body
-        // scrolls under the toolbar band with the same soft fade as every column.
-        .background(Color.primary.opacity(0.035))
+        // The header is the column's top band (MessengerDetail); the body scrolls under it.
         .accessibilityElement(children: .contain)
         .uiProbe("inspector-column")
     }

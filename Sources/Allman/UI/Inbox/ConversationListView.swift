@@ -9,9 +9,10 @@ struct ConversationListView: View {
     @FocusState private var searchFocused: Bool
     /// Return in the compose search picks the best match.
     @State private var composeSubmit = 0
-    /// How far above the visible edge a `.top`-anchored scroll lands (learned), and the last such scroll.
+    /// How far past the visible edge an edge-anchored scroll lands (learned per edge), and the last such scroll.
     @State private var topBias: CGFloat = 0
-    @State private var lastTopScroll: (id: String, bias: CGFloat)?
+    @State private var bottomBias: CGFloat = 0
+    @State private var lastEdgeScroll: (id: String, top: Bool, bias: CGFloat)?
 
     var body: some View {
         @Bindable var inbox = model.inbox
@@ -20,7 +21,7 @@ struct ConversationListView: View {
         let pins = inbox.pinnedInView
         let showPins = !pins.isEmpty && !inbox.isSearching
         VStack(spacing: 0) {
-            InboxBar().accessibilityElement(children: .contain).uiProbe("inbox-bar")
+            InboxBar().accessibilityElement(children: .contain).uiProbe("inbox-bar").padding(.top, 4)
             if inbox.composing {
                 SearchField(text: $inbox.composeQuery, focused: $searchFocused, prompt: "To: a name, or linkedin.com/in/…", onSubmit: { composeSubmit += 1 }, onCancel: { inbox.composing = false })
                     .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 8)
@@ -74,8 +75,10 @@ struct ConversationListView: View {
                             ForEach(rows) { snap in row(snap) }
                         }
                     }
-                    .listStyle(.sidebar)
-                    .contentMargins(.top, 0, for: .scrollContent)
+                    // Plain, not sidebar: the selection highlight runs edge to edge (no inset, no rounding).
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .contentMargins(.vertical, 0, for: .scrollContent)
                     .scrollEdgeEffectStyle(.soft, for: .top)
                     .uiProbe("conversation-list", always: true)
                     .focused($listFocused)
@@ -144,37 +147,38 @@ struct ConversationListView: View {
     /// into the arithmetic); the error is measured once and compensated from then on.
     private func reveal(_ id: String, _ proxy: ScrollViewProxy) {
         let inbox = model.inbox
-        guard let list = UIProbeRegistry.first("conversation-list") else { if UIProbeRegistry.enabled { NSLog("list: reveal \(id.prefix(12)) no list probe") }; return }
+        guard let list = UIProbeRegistry.first("conversation-list") else { return }
         let row = UIProbeRegistry.first("row-\(id)")
-        if UIProbeRegistry.enabled { NSLog("list: reveal \(id.prefix(12)) row=\(row.map { "\(Int($0.minY))…\(Int($0.maxY))" } ?? "nil") list=\(Int(list.minY))…\(Int(list.maxY)) bias=\(Int(topBias))") }
-        if let r = row, r.minY >= list.minY - 0.5, r.maxY <= list.maxY + 0.5 { lastTopScroll = nil; return }
+        if let r = row, r.minY >= list.minY - 0.5, r.maxY <= list.maxY + 0.5 { lastEdgeScroll = nil; return }
         let above: Bool
         if let r = row {
             above = r.minY < list.minY
-            // A previous top-anchored scroll for this row landed off by this much: learn the bias.
-            if above, let used = lastTopScroll, used.id == id { topBias = used.bias + (list.minY - r.minY) }
+            // The previous edge-anchored scroll for this row landed off by this much: learn the bias.
+            if let used = lastEdgeScroll, used.id == id {
+                if used.top, above { topBias = used.bias + (list.minY - r.minY) }
+                if !used.top, !above { bottomBias = used.bias + (r.maxY - list.maxY) }
+            }
         } else {
             // Not materialized: above or below everything that is.
             let idx = inbox.filtered.firstIndex { $0.record.convId == id } ?? 0
             let shown = UIProbeRegistry.liveIds(prefix: "row-").compactMap { k in inbox.filtered.firstIndex { "row-\($0.record.convId)" == k } }
             above = idx < (shown.min() ?? Int.max)
         }
-        if above {
-            let rowH = row?.height ?? 48
-            let span = max(1, list.height - rowH)
-            let anchor = UnitPoint(x: 0, y: min(0.9, max(0, topBias / span)))
-            lastTopScroll = (id, topBias)
-            withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(id, anchor: anchor) }
-        } else {
-            lastTopScroll = nil
-            withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(id, anchor: .bottom) }
-        }
+        let rowH = row?.height ?? 48
+        let span = max(1, list.height - rowH)
+        let anchor: UnitPoint = above
+            ? UnitPoint(x: 0, y: min(0.9, max(0, topBias / span)))
+            : UnitPoint(x: 0, y: max(0.1, min(1, 1 - bottomBias / span)))
+        lastEdgeScroll = (id, above, above ? topBias : bottomBias)
+        withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(id, anchor: anchor) }
     }
 
     private func row(_ snap: ConversationSnapshot) -> some View {
         let inbox = model.inbox
         let id = snap.record.convId
         return ConversationRow(snapshot: snap, unreadCount: inbox.unreadCount(snap))
+            .listRowInsets(EdgeInsets(top: 2, leading: 12, bottom: 2, trailing: 12))
+            .listRowSeparator(.hidden)
             .tag(id)
             .id(id)
 
@@ -284,7 +288,7 @@ struct ProfileHeader: View {
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
         .frame(maxWidth: .infinity)
-        .background(Color.primary.opacity(0.04))
+        .background(.thinMaterial)
         .accessibilityElement(children: .contain)
         .uiProbe("profile-header")
     }

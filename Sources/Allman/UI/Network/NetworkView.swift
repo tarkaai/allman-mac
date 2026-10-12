@@ -34,6 +34,7 @@ struct NetworkSidebar: View {
                 }
             }
             .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
             .scrollEdgeEffectStyle(.soft, for: .top)
             .scrollEdgeEffectStyle(.soft, for: .top)
             .contentMargins(.top, 0, for: .scrollContent)
@@ -74,29 +75,29 @@ struct NetworkDetail: View {
             if net.tab.isConnectionsList { connectionsTable(inbox) } else { invitationsTable(net) }
         }
         .scrollEdgeEffectStyle(.soft, for: .top)
-        .navigationTitle("")
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
+        .safeAreaBar(edge: .top) {
+            PageBar {
                 PageHeader(symbol: net.tab.symbol, title: net.tab.rawValue, line1: subtitle(inbox, net), line2: net.query.isEmpty ? nil : "\(filtered.count.formatted()) match “\(net.query)”")
-            }
-            .sharedBackgroundVisibility(.hidden)
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button { confirmPull = true } label: { Label("Pull Connections", systemImage: "arrow.down.circle") }
-                    .disabled(net.isBusy)
-                    .help("allman connections: refresh your 1st-degree list from LinkedIn (paced, idempotent)")
-                Menu {
-                    Picker("Up to", selection: $enrichLimit) {
-                        ForEach([10, 25, 50, 100, 250], id: \.self) { Text("\($0) profiles").tag($0) }
-                    }
-                    Toggle("Deep (history, education, skills)", isOn: $enrichDeep)
-                    Divider()
-                    Button("Start") { net.enrichMissing(limit: enrichLimit, deep: enrichDeep) }
-                } label: { Label("Enrich", systemImage: "person.text.rectangle") }
-                    .disabled(net.isBusy)
-                    .help("allman enrich: title, company, location and about for connections that lack them (quota-capped by the CLI)")
-                Button { connecting = true } label: { Label("Connect…", systemImage: "person.badge.plus") }
-                    .disabled(net.isBusy)
-                    .help("Send a connection request (allman connect)")
+            } trailing: {
+                HStack(spacing: 8) {
+                    Button { confirmPull = true } label: { Label("Pull Connections", systemImage: "arrow.down.circle") }
+                        .disabled(net.isBusy)
+                        .help("allman connections: refresh your 1st-degree list from LinkedIn (paced, idempotent)")
+                    Menu {
+                        Picker("Up to", selection: $enrichLimit) {
+                            ForEach([10, 25, 50, 100, 250], id: \.self) { Text("\($0) profiles").tag($0) }
+                        }
+                        Toggle("Deep (history, education, skills)", isOn: $enrichDeep)
+                        Divider()
+                        Button("Start") { net.enrichMissing(limit: enrichLimit, deep: enrichDeep) }
+                    } label: { Label("Enrich", systemImage: "person.text.rectangle") }
+                        .disabled(net.isBusy)
+                        .help("allman enrich: title, company, location and about for connections that lack them (quota-capped by the CLI)")
+                    Button { connecting = true } label: { Label("Connect…", systemImage: "person.badge.plus") }
+                        .disabled(net.isBusy)
+                        .help("Send a connection request (allman connect)")
+                }
+                .controlSize(.small)
             }
         }
         .sheet(isPresented: $connecting) { ConnectSheet(slug: "", name: "").environment(model) }

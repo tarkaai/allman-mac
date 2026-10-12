@@ -16,6 +16,7 @@ struct InsightsSidebar: View {
             }
         }
         .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
         .contentMargins(.top, 0, for: .scrollContent)
         .scrollEdgeEffectStyle(.soft, for: .top)
     }
@@ -80,14 +81,11 @@ struct InsightsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollEdgeEffectStyle(.soft, for: .top)
-        .navigationTitle("")
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
+        .safeAreaBar(edge: .top) {
+            PageBar {
                 PageHeader(symbol: "chart.bar.xaxis", title: "Insights", line1: model.current.map { "\($0.displayName) · @\($0.slug)" }, line2: insights.map { "\($0.totalThreads.formatted()) threads · \($0.totalMessages.formatted()) messages" })
-            }
-            .sharedBackgroundVisibility(.hidden)
-            ToolbarItem(placement: .primaryAction) {
-                Button { insights = nil; Task { await load() } } label: { Label("Recompute", systemImage: "arrow.clockwise") }.help("Recompute")
+            } trailing: {
+                Button { insights = nil; Task { await load() } } label: { Label("Recompute", systemImage: "arrow.clockwise") }.help("Recompute").controlSize(.small)
             }
         }
         .task(id: model.currentId) { await load() }

@@ -66,9 +66,29 @@ final class AppModel {
         didSet { UserDefaults.standard.set(inspectorVisible, forKey: Self.inspectorKey) }
     }
 
+    /// True while the contact panel slides: the thread re-lays out without animations
+    /// of its own (text and bubbles then move together, driven by the panel's width).
+    var panelAnimating = false
+
     /// Slide the inspector in or out (every toggle goes through here so it animates).
     func toggleInspector() {
+        panelAnimating = true
         withAnimation(.easeInOut(duration: 0.25)) { inspectorVisible.toggle() }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(380))
+            panelAnimating = false
+        }
+    }
+
+    /// Sidebar collapsed, remembered per experience; Settings never collapses.
+    static let sidebarKey = "sidebarCollapsedByExperience"
+    private(set) var sidebarCollapsed: [String: Bool] = (UserDefaults.standard.dictionary(forKey: AppModel.sidebarKey) as? [String: Bool]) ?? [:]
+    var isSidebarCollapsed: Bool { experience != .settings && (sidebarCollapsed[experience.rawValue] ?? false) }
+    var canCollapseSidebar: Bool { experience != .settings }
+    func toggleSidebar() {
+        guard canCollapseSidebar else { return }
+        withAnimation(.easeInOut(duration: 0.25)) { sidebarCollapsed[experience.rawValue] = !isSidebarCollapsed }
+        UserDefaults.standard.set(sidebarCollapsed, forKey: Self.sidebarKey)
     }
 
     private var lastNotifiedAt: [String: Int64] = [:]

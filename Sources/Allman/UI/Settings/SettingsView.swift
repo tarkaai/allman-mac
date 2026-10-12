@@ -45,6 +45,7 @@ struct SettingsSidebar: View {
             }
         }
         .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
         .contentMargins(.top, 0, for: .scrollContent)
         .scrollEdgeEffectStyle(.soft, for: .top)
     }
@@ -63,12 +64,10 @@ struct SettingsDetail: View {
             }
         }
         .scrollEdgeEffectStyle(.soft, for: .top)
-        .navigationTitle("")
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
+        .safeAreaBar(edge: .top) {
+            PageBar {
                 PageHeader(symbol: section.symbol, title: section.title, line1: section.blurb)
-            }
-            .sharedBackgroundVisibility(.hidden)
+            } trailing: { EmptyView() }
         }
     }
 }

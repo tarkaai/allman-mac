@@ -264,7 +264,7 @@ struct AccountAuth: Codable, Hashable {
 struct Account: Identifiable, Hashable {
     var id: String { profileId }
     let profileId: String
-    /// Friendly slug from the top-level symlink (e.g. "toobulkeh"), falling back to AUTH.profileSlug / id.
+    /// Friendly slug from the top-level symlink (e.g. "sam-example"), falling back to AUTH.profileSlug / id.
     let slug: String
     let dir: URL
     let auth: AccountAuth

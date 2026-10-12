@@ -181,7 +181,8 @@ struct PeopleSearchResults: View {
     }
 
     private func start(_ recipient: DraftRecipient) {
-        model.inbox.startDraft(recipient)
+        // With a draft open, picking someone adds them (a group); otherwise it starts the draft.
+        model.inbox.addDraftRecipient(recipient)
         model.inbox.composing = false
     }
 
@@ -228,6 +229,12 @@ struct DraftRecipient: Hashable {
     let headline: String?
     let avatarURL: URL?
     var convId: String { "draft:\(slug)" }
+
+    /// For the stacked group avatar.
+    var asParticipant: Participant {
+        let parts = name.split(separator: " ").map(String.init)
+        return Participant(profileId: nil, profileUrn: nil, backendUrn: nil, slug: slug, firstName: parts.first, lastName: parts.dropFirst().joined(separator: " "), name: name, headline: headline, profileUrl: nil, profilePictures: avatarURL.map { [ProfilePicture(width: 200, height: 200, url: $0.absoluteString)] }, distance: nil, pronoun: nil, isPremium: nil, isVerified: nil)
+    }
 }
 
 /// A person from `allman people --json` (LinkedIn search through the CLI).
@@ -260,15 +267,38 @@ struct DraftThreadView: View {
     let recipient: DraftRecipient
 
     var body: some View {
+        let all = model.inbox.draftRecipients
         VStack(spacing: 0) {
+            // Who gets it: chips (remove with ×), and room for more.
+            HStack(spacing: 6) {
+                Text("To").font(AFont.meta).foregroundStyle(.secondary)
+                FlowLayout(spacing: 4) {
+                    ForEach(all, id: \.slug) { r in
+                        HStack(spacing: 4) {
+                            AvatarView(url: r.avatarURL, name: r.name, size: 16)
+                            Text(r.name).font(AFont.chip)
+                            Button { model.inbox.removeDraftRecipient(r.slug) } label: { Image(systemName: "xmark").font(AFont.smallIcon) }
+                                .buttonStyle(.plain).foregroundStyle(.secondary).help("Remove")
+                        }
+                        .padding(.leading, 4).padding(.trailing, 8).padding(.vertical, 3)
+                        .background(Color.primary.opacity(0.06), in: Capsule())
+                        .uiProbe("draft-chip-\(r.slug)")
+                    }
+                    Button { model.inbox.composing = true } label: { Label("Add people", systemImage: "plus").font(AFont.chip) }
+                        .buttonStyle(.plain).foregroundStyle(Color.accentColor)
+                        .help("Add another recipient — two or more make this a group message")
+                        .uiProbe("draft-add")
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 16).padding(.top, 10)
             ContentUnavailableView {
-                Label("New message to \(recipient.name)", systemImage: "square.and.pencil")
+                Label(all.count > 1 ? "New group message" : "New message to \(recipient.name)", systemImage: all.count > 1 ? "person.2" : "square.and.pencil")
             } description: {
-                Text("Sent through allman. If you already have a thread on LinkedIn, it will pick that up.")
+                Text(all.count > 1 ? "Sent through allman as one group thread with \(all.count) people." : "Sent through allman. If you already have a thread on LinkedIn, it will pick that up.")
             }
             .frame(maxHeight: .infinity)
-            ComposerView(convId: recipient.convId, firstName: recipient.name.split(separator: " ").first.map(String.init) ?? recipient.name, autoFocus: true)
+            ComposerView(convId: recipient.convId, firstName: all.count > 1 ? "everyone" : (recipient.name.split(separator: " ").first.map(String.init) ?? recipient.name), autoFocus: true)
         }
-        .navigationTitle("")
     }
 }

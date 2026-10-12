@@ -1,7 +1,7 @@
 import Foundation
 
 /// A synthetic `~/.allman`-shaped store for tests: one account, thirty 1:1 threads
-/// (some unread, one long), and one group thread (Casey Example + AJ Sample) in the
+/// (some unread, one long), and one group thread (Priya Example + Theo Sample) in the
 /// shape allman-cli ≥ 0.6 writes. Nothing here touches LinkedIn or the real store.
 enum MockStore {
     static let profileId = "ACoAAMOCK0000000000000000000000000"
@@ -21,7 +21,7 @@ enum MockStore {
         try fm.createSymbolicLink(at: root.appendingPathComponent(slug), withDestinationURL: URL(fileURLWithPath: profileId))
 
         let now = Date()
-        let names = ["Avery Lane", "Blake Rivera", "Casey Nguyen", "Dakota Shaw", "Emerson Cole", "Finley Park", "Harper Quinn", "Indigo Reyes", "Jordan Blake", "Kai Morgan",
+        let names = ["Avery Lane", "Blake Rivera", "Cam Nguyen", "Dakota Shaw", "Emerson Cole", "Finley Park", "Harper Quinn", "Indigo Reyes", "Jordan Blake", "Kai Morgan",
                      "Logan Pierce", "Morgan Ellis", "Noa Fischer", "Oakley Brooks", "Parker Lane", "Quinn Harper", "Reese Dalton", "Sage Winters", "Tatum Reed", "Uma Patel",
                      "Val Santos", "Wren Tucker", "Xan Lowell", "Yael Stern", "Zion Carter", "Aria Chen", "Bodhi Malik", "Cleo Vance", "Dash Holloway", "Ember Ruiz"]
         for (i, name) in names.enumerated() {
@@ -44,18 +44,18 @@ enum MockStore {
         }
 
         // The group: participants in the CLI's contract shape; no slug/profile aliases.
-        let casey = participant(pid: "ACoAAMOCKCASEY", slug: "casey-example", first: "Casey", last: "Example", headline: "Engineer at Casey Co")
-        let aj = participant(pid: "ACoAAMOCKAJ", slug: "aj-sample", first: "AJ", last: "Sample", headline: "Founder at AJ Labs")
-        var rec = record(convId: groupConvId, pid: "ACoAAMOCKCASEY", slug: nil, first: "Casey", last: "Example", name: "Casey Example, AJ Sample", headline: "Engineer at Casey Co", unread: true, lastActivity: now.addingTimeInterval(-600), created: now.addingTimeInterval(-7200), total: 5)
+        let priya = participant(pid: "ACoAAMOCKPRIYA", slug: "priya-example", first: "Priya", last: "Example", headline: "Engineer at Example Co")
+        let theo = participant(pid: "ACoAAMOCKTHEO", slug: "theo-sample", first: "Theo", last: "Sample", headline: "Founder at Sample Labs")
+        var rec = record(convId: groupConvId, pid: "ACoAAMOCKPRIYA", slug: nil, first: "Priya", last: "Example", name: "Priya Example, Theo Sample", headline: "Engineer at Example Co", unread: true, lastActivity: now.addingTimeInterval(-600), created: now.addingTimeInterval(-7200), total: 5)
         rec["isGroup"] = true
         rec["title"] = nil
-        rec["participants"] = [casey, aj]
+        rec["participants"] = [priya, theo]
         let base = Int64(now.timeIntervalSince1970 * 1000) - 7_000_000
         let gmsgs: [[String: Any?]] = [
             message(urn: "urn:li:messagingMessage:2-g0", ts: base, fromUrn: "urn:li:fsd_profile:\(profileId)", fromName: "Mock User", mine: true, body: "Group test — hi both"),
-            message(urn: "urn:li:messagingMessage:2-g1", ts: base + 60_000, fromUrn: "urn:li:fsd_profile:ACoAAMOCKCASEY", fromName: "Casey Example", mine: false, body: "Hey! Got it."),
-            message(urn: "urn:li:messagingMessage:2-g2", ts: base + 120_000, fromUrn: "urn:li:fsd_profile:ACoAAMOCKCASEY", fromName: "Casey Example", mine: false, body: "Works for me."),
-            message(urn: "urn:li:messagingMessage:2-g3", ts: base + 180_000, fromUrn: "urn:li:fsd_profile:ACoAAMOCKAJ", fromName: "AJ Sample", mine: false, body: "Same here, thanks."),
+            message(urn: "urn:li:messagingMessage:2-g1", ts: base + 60_000, fromUrn: "urn:li:fsd_profile:ACoAAMOCKPRIYA", fromName: "Priya Example", mine: false, body: "Hey! Got it."),
+            message(urn: "urn:li:messagingMessage:2-g2", ts: base + 120_000, fromUrn: "urn:li:fsd_profile:ACoAAMOCKPRIYA", fromName: "Priya Example", mine: false, body: "Works for me."),
+            message(urn: "urn:li:messagingMessage:2-g3", ts: base + 180_000, fromUrn: "urn:li:fsd_profile:ACoAAMOCKTHEO", fromName: "Theo Sample", mine: false, body: "Same here, thanks."),
             message(urn: "urn:li:messagingMessage:2-g4", ts: base + 240_000, fromUrn: "urn:li:fsd_profile:\(profileId)", fromName: "Mock User", mine: true, body: "Great, talk soon."),
         ]
         try writeConversation(account: account, convId: groupConvId, record: rec, messages: gmsgs)

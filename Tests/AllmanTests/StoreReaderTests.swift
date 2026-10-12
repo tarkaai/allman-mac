@@ -16,7 +16,7 @@ final class StoreReaderTests: XCTestCase {
         {"urn":"urn:li:fsd_profile:ACoAAME","profileSlug":null,"name":null,"headline":null,"profileUrl":null,"imageUrl":null,"userType":null,"networkSize":null,"status":"authenticated","lastSyncAt":"2026-10-07T17:48:57.401Z"}
         """
         try auth.write(to: account.appendingPathComponent("AUTH.json"), atomically: true, encoding: .utf8)
-        try FileManager.default.createSymbolicLink(at: store.appendingPathComponent("toobulkeh"), withDestinationURL: URL(fileURLWithPath: "ACoAAME"))
+        try FileManager.default.createSymbolicLink(at: store.appendingPathComponent("sam-example"), withDestinationURL: URL(fileURLWithPath: "ACoAAME"))
         try FileManager.default.createSymbolicLink(at: account.appendingPathComponent("jamie-rivera"), withDestinationURL: URL(fileURLWithPath: "2-TESTCONV=="))
         return (store, account)
     }
@@ -26,10 +26,10 @@ final class StoreReaderTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: store) }
         let accounts = StoreReader(storeURL: store).discoverAccounts()
         XCTAssertEqual(accounts.count, 1)
-        XCTAssertEqual(accounts.first?.slug, "toobulkeh")
+        XCTAssertEqual(accounts.first?.slug, "sam-example")
         XCTAssertEqual(accounts.first?.profileId, "ACoAAME")
         XCTAssertTrue(accounts.first?.auth.isAuthenticated ?? false)
-        XCTAssertEqual(accounts.first?.displayName, "toobulkeh", "falls back to slug when AUTH.name is null")
+        XCTAssertEqual(accounts.first?.displayName, "sam-example", "falls back to slug when AUTH.name is null")
     }
 
     func testConversationIdsSkipSymlinks() throws {

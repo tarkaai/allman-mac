@@ -1,50 +1,53 @@
 import AppKit
 import SwiftUI
 
-/// The one window. Every experience has the same shape: the sidebar (the chrome
-/// bar — sidebar toggle, then the experience switcher — on its toolbar row, the
-/// signed-in account at the bottom, the experience's own navigation between) and
-/// a detail page whose header sits on the toolbar row, left-aligned, with the
-/// page's actions on the right.
-///
-/// Toolbar rules (see docs/UI-RULES.md): the toolbar background is the system's
-/// (never hidden, never painted) so every column gets the same soft fade as
-/// content scrolls under it; items are declared once, in a stable structure, and
-/// change *inside* rather than appearing and disappearing, so nothing on the
-/// toolbar row ever re-flows while arrowing through the list or toggling panels.
+/// Window chrome constants (see docs/UI-RULES.md).
+enum Chrome {
+    /// The top band: window buttons, chrome bar and page headers live here.
+    static let barHeight: CGFloat = 44
+    static let sidebarWidth: CGFloat = 340
+    /// Where the chrome bar starts (after the window buttons).
+    static let chromeLeading: CGFloat = 76
+    /// Leading inset for a page header while the sidebar is collapsed (room for the chrome bar).
+    static let collapsedLeading: CGFloat = 262
+    static let panelWidth: CGFloat = 300
+    /// Room kept at the far right of the messenger bars for the `i`.
+    static let trailingSlot: CGFloat = 48
+}
+
+/// The one window, with chrome the app draws itself (no system title bar or
+/// toolbar): a full-height sidebar, the chrome bar fixed at the top-left of the
+/// window (sidebar toggle, then the experience switcher — it never moves), and a
+/// detail whose header sits on the same top band. Every experience has this shape.
 struct InboxWindow: View {
     @Environment(AppModel.self) private var model
     @State private var choosingSyncWindow = false
-    /// The sidebar column. The chrome bar lives in the sidebar's toolbar and moves
-    /// to the detail's leading slot — same order — while the sidebar is collapsed.
-    @State private var columns: NavigationSplitViewVisibility = .all
 
     var body: some View {
         @Bindable var inbox = model.inbox
-        NavigationSplitView(columnVisibility: $columns) {
-            SidebarView(columns: $columns)
-                .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 440)
-                // Our own toggle sits at the far left of the chrome bar instead.
-                .toolbar(removing: .sidebarToggle)
-        } detail: {
-            Group {
-                switch model.experience {
-                case .messenger: MessengerDetail()
-                case .network: NetworkDetail()
-                case .insights: InsightsView()
-                case .settings: SettingsDetail()
-                }
+        let collapsed = model.isSidebarCollapsed
+        ZStack(alignment: .topLeading) {
+            HStack(spacing: 0) {
+                SidebarView()
+                    .frame(width: collapsed ? 0 : Chrome.sidebarWidth, alignment: .trailing)
+                    .clipped()
+                detail
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .toolbar {
-                ToolbarItem(placement: .navigation) {
-                    if columns == .detailOnly { ChromeBar(columns: $columns) }
-                }
+            ChromeBar()
+                .padding(.leading, Chrome.chromeLeading)
+                .frame(height: Chrome.barHeight)
+            if model.experience == .messenger, inbox.selected != nil || inbox.draft != nil {
+                // One `i`, far right, whatever the panel does.
+                HStack { Spacer(); InspectorToggle().padding(.trailing, 12) }
+                    .frame(height: Chrome.barHeight)
             }
         }
-        .navigationTitle("")
+        .animation(.easeInOut(duration: 0.25), value: collapsed)
+        .ignoresSafeArea(.container, edges: .top)
         .onReceive(NotificationCenter.default.publisher(for: .allmanCompose)) { _ in
             model.experience = .messenger
-            withAnimation(.easeInOut(duration: 0.2)) { columns = .all }
+            if model.isSidebarCollapsed { model.toggleSidebar() }
             model.inbox.composing = true
         }
         .onReceive(NotificationCenter.default.publisher(for: .allmanSyncWindow)) { _ in choosingSyncWindow = true }
@@ -54,6 +57,10 @@ struct InboxWindow: View {
             window.identifier = NSUserInterfaceItemIdentifier("inbox")
             window.tabbingMode = .disallowed
             window.title = "Allman"
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
+            window.styleMask.insert(.fullSizeContentView)
+            WindowAccessor.centerWindowButtons(window)
         })
         .overlay(alignment: .bottom) {
             if let toast = inbox.toast {
@@ -77,15 +84,28 @@ struct InboxWindow: View {
         }
         .animation(.default, value: inbox.toast)
     }
+
+    @ViewBuilder
+    private var detail: some View {
+        switch model.experience {
+        case .messenger: MessengerDetail()
+        case .network: NetworkDetail()
+        case .insights: InsightsView()
+        case .settings: SettingsDetail()
+        }
+    }
 }
 
-/// Chrome bar · the experience's navigation · the signed-in account.
+/// Full height, over the top band: the experience's navigation under the chrome
+/// bar's band, the signed-in account at the bottom.
 struct SidebarView: View {
     @Environment(AppModel.self) private var model
-    @Binding var columns: NavigationSplitViewVisibility
 
     var body: some View {
         VStack(spacing: 0) {
+            Color.clear.frame(height: Chrome.barHeight)
+                .contentShape(Rectangle())
+                .gesture(WindowDragGesture())
             Group {
                 switch model.experience {
                 case .messenger: ConversationListView()
@@ -95,30 +115,35 @@ struct SidebarView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.top, 4)
-            ProfileHeader()
+            // As a bottom inset (not a sibling): the list knows exactly where its viewport ends.
+            .safeAreaInset(edge: .bottom, spacing: 0) { ProfileHeader() }
         }
-        // On the toolbar row, right after the window buttons. (`.automatic` here is the
-        // sidebar's own section; `.navigation` would be merged into the detail's leading slot.)
-        // Only while the column is shown: a hidden sidebar's items fall into the » overflow.
-        .toolbar { if columns != .detailOnly { ToolbarItem(placement: .automatic) { ChromeBar(columns: $columns) } } }
+        .frame(width: Chrome.sidebarWidth)
+        .background(Color.primary.opacity(0.045))
+        .uiProbe("sidebar")
     }
 }
 
 /// Sidebar toggle (always far left), then Messenger · Network · Insights · Settings.
-/// One view, one order, wherever it is placed.
+/// Fixed at the top-left of the window; collapsing the sidebar only changes the
+/// toggle's look, never its place.
 struct ChromeBar: View {
-    @Binding var columns: NavigationSplitViewVisibility
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         HStack(spacing: 10) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.25)) { columns = columns == .detailOnly ? .all : .detailOnly }
-            } label: {
-                Label(columns == .detailOnly ? "Show Sidebar" : "Hide Sidebar", systemImage: "sidebar.leading")
+            Button { model.toggleSidebar() } label: {
+                Image(systemName: model.isSidebarCollapsed ? "sidebar.leading" : "sidebar.leading")
+                    .symbolVariant(model.isSidebarCollapsed ? .none : .fill)
+                    .font(.system(size: 14, weight: .medium))
+                    .frame(width: 28, height: 26)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .foregroundStyle(model.canCollapseSidebar ? .secondary : .quaternary)
+            .disabled(!model.canCollapseSidebar)
             .keyboardShortcut("s", modifiers: [.control, .command])
-            .help("Toggle sidebar (⌃⌘S)")
+            .help(model.canCollapseSidebar ? (model.isSidebarCollapsed ? "Show sidebar (⌃⌘S)" : "Hide sidebar (⌃⌘S)") : "Settings keeps its sidebar")
             .uiProbe("sidebar-toggle")
             ExperienceSwitcher()
         }
@@ -146,7 +171,32 @@ struct ExperienceSwitcher: View {
     }
 }
 
-/// The page title block on the toolbar row: avatar or icon, title, up to two subtitle rows.
+/// A page's top band: header on the left (moved right while the sidebar is
+/// collapsed, to clear the chrome bar), actions on the right. Content scrolls
+/// under it with the soft fade (`safeAreaBar`).
+struct PageBar<Leading: View, Trailing: View>: View {
+    @Environment(AppModel.self) private var model
+    /// Fixed leading inset (the contact panel's bar), else follows the sidebar state.
+    var fixedLeading: CGFloat? = nil
+    var trailingSlot: CGFloat = 12
+    @ViewBuilder let leading: () -> Leading
+    @ViewBuilder let trailing: () -> Trailing
+
+    var body: some View {
+        HStack(spacing: 10) {
+            leading()
+            Spacer(minLength: 8)
+            trailing()
+        }
+        .padding(.leading, fixedLeading ?? (model.isSidebarCollapsed ? Chrome.collapsedLeading : 16))
+        .padding(.trailing, trailingSlot)
+        .frame(maxWidth: .infinity, minHeight: Chrome.barHeight, maxHeight: Chrome.barHeight)
+        .contentShape(Rectangle())
+        .gesture(WindowDragGesture())
+    }
+}
+
+/// The page title block on the top band: avatar or icon, title, up to two subtitle rows.
 struct PageHeader: View {
     var avatarURL: URL? = nil
     var avatar: AnyView? = nil
@@ -163,10 +213,10 @@ struct PageHeader: View {
             if let avatar {
                 avatar
             } else if avatarURL != nil || symbol == nil {
-                AvatarView(url: avatarURL, name: title, size: 34)
+                AvatarView(url: avatarURL, name: title, size: 32)
             } else if let symbol {
                 Image(systemName: symbol).font(.system(size: 15, weight: .medium)).foregroundStyle(.secondary)
-                    .frame(width: 34, height: 34).background(Color.primary.opacity(0.06), in: Circle())
+                    .frame(width: 32, height: 32).background(Color.primary.opacity(0.06), in: Circle())
             }
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 6) {
@@ -183,9 +233,6 @@ struct PageHeader: View {
                 }
             }
         }
-        // A fixed ideal width: toolbar items are measured at their ideal size, and a
-        // long headline would otherwise push the whole row into the » overflow.
-        .frame(minWidth: 160, idealWidth: 360, maxWidth: 520, alignment: .leading)
         .contentShape(Rectangle())
         .onTapGesture { onTap?() }
     }
@@ -197,94 +244,67 @@ struct InspectorToggle: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        Button { model.toggleInspector() } label: { Label("Contact Details", systemImage: "info.circle") }
-            .help(model.inspectorVisible ? "Hide contact details (⌥⌘I)" : "Show contact details (⌥⌘I)")
-            .uiProbe("inspector-toggle")
+        Button { model.toggleInspector() } label: {
+            Image(systemName: "info.circle")
+                .font(.system(size: 15, weight: .medium))
+                .frame(width: 28, height: 26)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(model.inspectorVisible ? Color.accentColor : .secondary)
+        .help(model.inspectorVisible ? "Hide contact details (⌥⌘I)" : "Show contact details (⌥⌘I)")
+        .uiProbe("inspector-toggle")
     }
 }
 
 /// The messenger's detail: the open thread, a draft, or the empty state, with the
-/// contact panel as a trailing column *inside* this view. (Not `.inspector`: that
-/// squeezes the whole split view while it animates, so the sidebar slides away and
-/// back — the "jumpy" open/close.) The toolbar items are declared here, once.
+/// contact panel as a trailing column inside this view. Each column carries its own
+/// top band; the `i` is the window's (InboxWindow) so it never moves.
 struct MessengerDetail: View {
     @Environment(AppModel.self) private var model
-    static let panelWidth: CGFloat = 300
 
     var body: some View {
         let inbox = model.inbox
+        let panel = model.inspectorVisible && inbox.draft == nil && inbox.selected != nil
         HStack(spacing: 0) {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            if model.inspectorVisible, inbox.draft == nil, let snap = inbox.selected {
+                .safeAreaBar(edge: .top) {
+                    PageBar(trailingSlot: Chrome.trailingSlot) {
+                        if !panel { detailHeader }
+                    } trailing: { EmptyView() }
+                }
+            if panel, let snap = inbox.selected {
                 ContactInspector(snapshot: snap)
                     .id(snap.record.convId)
-                    .frame(width: Self.panelWidth)
+                    .safeAreaBar(edge: .top) {
+                        PageBar(fixedLeading: 16, trailingSlot: Chrome.trailingSlot) {
+                            InspectorHeader(snapshot: snap)
+                        } trailing: { EmptyView() }
+                    }
+                    .background(Color.primary.opacity(0.035))
+                    .frame(width: Chrome.panelWidth)
                     .transition(.move(edge: .trailing))
             }
         }
-        // Not `.clipped()`: the panel's header lives in the toolbar band above this view's bounds.
         .animation(.easeInOut(duration: 0.25), value: model.inspectorVisible)
-        .navigationTitle("")
-        // Declared once here (not per thread) so the items keep their place while
-        // arrowing through the list; the header fades out while the panel shows it.
-        // The `i` is the one control for the panel and never moves.
-        .toolbar {
-            ToolbarItem(placement: .navigation) { detailHeader }
-                .sharedBackgroundVisibility(.hidden)
-            // The panel's header, above the panel (the band's scroll-edge effect would
-            // wash out a header drawn as content). Always declared — a toolbar item that
-            // comes and goes throws every item into the » overflow on macOS 26 — and
-            // collapsed to nothing while the panel is closed.
-            ToolbarItem(placement: .primaryAction) { panelHeader }
-                .sharedBackgroundVisibility(.hidden)
-            ToolbarItem(placement: .primaryAction) { detailAction }
-        }
     }
-
-    /// Width the `i` takes at the trailing end of the toolbar (button plus spacing).
-    static let toggleSlot: CGFloat = 60
 
     @ViewBuilder
     private var detailHeader: some View {
         let inbox = model.inbox
         if let draft = inbox.draft {
-            PageHeader(avatarURL: draft.avatarURL, title: draft.name, titleAccessory: AnyView(MessengerBadge(size: 13)), line1: draft.headline ?? "linkedin.com/in/\(draft.slug)")
+            let all = inbox.draftRecipients
+            PageHeader(
+                avatarURL: all.count == 1 ? draft.avatarURL : nil,
+                avatar: all.count > 1 ? AnyView(GroupAvatarView(members: all.map(\.asParticipant), size: 32)) : nil,
+                title: all.map(\.name).joined(separator: ", "),
+                titleAccessory: AnyView(MessengerBadge(size: 13)),
+                line1: all.count > 1 ? "New group message · \(all.count) people" : (draft.headline ?? "linkedin.com/in/\(draft.slug)")
+            )
+            .uiProbe("thread-header")
         } else if let snap = inbox.selected {
-            // Collapsed (not just faded) while the panel is open: the toolbar measures
-            // every item, and a hidden-but-wide header plus the panel header overflows.
-            PersonHeader(snapshot: snap)
-                .frame(width: model.inspectorVisible ? 0 : nil, alignment: .leading)
-                .clipped()
-                .opacity(model.inspectorVisible ? 0 : 1)
-                .allowsHitTesting(!model.inspectorVisible)
-                .accessibilityHidden(model.inspectorVisible)
-                .uiProbe("thread-header")
-        }
-    }
-
-    @ViewBuilder
-    private var panelHeader: some View {
-        let inbox = model.inbox
-        let open = model.inspectorVisible && inbox.draft == nil && inbox.selected != nil
-        // Real header content even while collapsed (a bare `Color` makes the toolbar draw a glass capsule).
-        Group {
-            if let snap = inbox.selected { InspectorHeader(snapshot: snap) } else { Text("") }
-        }
-        .frame(width: open ? Self.panelWidth - Self.toggleSlot : 1, height: 34, alignment: .leading)
-        .clipped()
-        .opacity(open ? 1 : 0)
-        .accessibilityHidden(!open)
-    }
-
-    @ViewBuilder
-    private var detailAction: some View {
-        let inbox = model.inbox
-        if inbox.draft != nil {
-            Button { inbox.draft = nil } label: { Label("Discard draft", systemImage: "xmark") }
-                .help("Discard this draft")
-        } else if inbox.selected != nil {
-            InspectorToggle()
+            PersonHeader(snapshot: snap).uiProbe("thread-header")
         }
     }
 
@@ -328,5 +348,14 @@ struct WindowAccessor: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSView, context: Context) {
         DispatchQueue.main.async { if let w = nsView.window { configure(w) } }
+    }
+
+    /// The window buttons sit on the chrome bar's band: centered on `Chrome.barHeight`.
+    static func centerWindowButtons(_ window: NSWindow) {
+        for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+            guard let b = window.standardWindowButton(kind), let bar = b.superview else { continue }
+            let y = bar.bounds.height - (Chrome.barHeight - b.frame.height) / 2 - b.frame.height
+            if abs(b.frame.origin.y - y) > 0.5 { b.setFrameOrigin(NSPoint(x: b.frame.origin.x, y: y)) }
+        }
     }
 }

@@ -148,6 +148,12 @@ enum DebugSnapshots {
                 // Keyboard navigation (ALLMAN_SNAPSHOT_NAV=1): 18 steps down — the list must follow the selection.
                 if ProcessInfo.processInfo.environment["ALLMAN_SNAPSHOT_NAV"] != nil {
                     model.inbox.requestFocus(.list)
+                    // From the first row, one step down must not move the list.
+                    if let first = model.inbox.navigationOrder.first { model.inbox.select(first.record.convId) }
+                    try? await Task.sleep(for: .milliseconds(600))
+                    model.inbox.selectNext()
+                    try? await Task.sleep(for: .seconds(1))
+                    capture(w, to: out.appendingPathComponent("nav-one.png"))
                     for _ in 0..<18 { model.inbox.selectNext(); try? await Task.sleep(for: .milliseconds(60)) }
                     try? await Task.sleep(for: .seconds(1.2))
                     capture(w, to: out.appendingPathComponent("nav-down.png"))

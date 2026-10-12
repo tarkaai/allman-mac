@@ -80,17 +80,15 @@ struct ConversationListView: View {
                         return handleKey(press.characters) ? .handled : .ignored
                     }
                     // Keyboard moves (⌘↑/↓, j/k, next unread) keep the selected row on screen.
-                    .onChange(of: inbox.selectedConvId) { old, id in
-                        guard let id, let to = inbox.filtered.firstIndex(where: { $0.record.convId == id }) else { return }
-                        // Anchor by direction: the row lands fully on screen with the least movement.
-                        let from = old.flatMap { o in inbox.filtered.firstIndex { $0.record.convId == o } }
-                        let anchor: UnitPoint = (from.map { to >= $0 } ?? true) ? .bottom : .top
-                        withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(id, anchor: anchor) }
-                        // Rows below the fold are only estimated until laid out; a second pass lands exactly.
+                    .onChange(of: inbox.selectedConvId) { _, id in
+                        guard let id, inbox.filtered.contains(where: { $0.record.convId == id }) else { return }
+                        // No anchor = the least movement that makes the row visible (none when it already is).
+                        // Rows below the fold are only estimated until laid out, so a second pass lands exactly.
+                        withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(id) }
                         Task { @MainActor in
                             try? await Task.sleep(for: .milliseconds(220))
                             guard inbox.selectedConvId == id else { return }
-                            proxy.scrollTo(id, anchor: anchor)
+                            proxy.scrollTo(id)
                         }
                     }
                     }

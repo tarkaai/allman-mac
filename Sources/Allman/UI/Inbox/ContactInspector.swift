@@ -15,9 +15,8 @@ struct ContactInspector: View {
         VStack(spacing: 0) {
             // Fixed on the toolbar line, glass behind it: picture, name, pronouns, degree, verified, close (i).
             headerRow(r, conn)
-                .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 8)
+                .padding(.leading, 16).padding(.trailing, 48).padding(.top, 8).padding(.bottom, 8)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.bar)
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     about(r, conn)
@@ -36,6 +35,13 @@ struct ContactInspector: View {
             .scrollEdgeEffectStyle(.soft, for: .top)
         }
         .ignoresSafeArea(.container, edges: .top)
+        .toolbar {
+            // The toolbar strip sits over the header row, so the close button lives there to stay clickable.
+            ToolbarItem(placement: .primaryAction) {
+                Button { model.toggleInspector() } label: { Label("Hide Contact Details", systemImage: "info.circle.fill") }
+                    .help("Hide contact details (⌥⌘I)")
+            }
+        }
     }
 
     // MARK: Sections
@@ -52,10 +58,7 @@ struct ContactInspector: View {
                         if r.isVerified == true { Image(systemName: "checkmark.seal.fill").font(AFont.meta).foregroundStyle(.blue).help("Verified") }
                     }
                 }
-                Spacer(minLength: 6)
-                Button { model.toggleInspector() } label: { Image(systemName: "info.circle.fill").font(.system(size: 15)).foregroundStyle(.secondary) }
-                    .buttonStyle(.plain)
-                    .help("Hide contact details (⌥⌘I)")
+                Spacer(minLength: 0)
             }
             .frame(height: 36)
     }

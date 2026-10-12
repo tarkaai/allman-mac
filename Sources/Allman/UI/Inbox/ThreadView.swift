@@ -109,7 +109,7 @@ struct ThreadView: View {
                     .padding(.horizontal, 16).padding(.vertical, 10)
                 }
                 .contentMargins(.top, 14, for: .scrollContent)
-                .scrollEdgeEffectStyle(.hard, for: .top)
+                .scrollEdgeEffectStyle(.soft, for: .top)
                 .onScrollGeometryChange(for: Bool.self) { g in
                     g.contentOffset.y + g.containerSize.height >= g.contentSize.height - 48
                 } action: { _, near in atBottom = near }

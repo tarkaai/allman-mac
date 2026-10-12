@@ -173,7 +173,7 @@ struct MessengerDetail: View {
                 }
                 .inspectorColumnWidth(min: 250, ideal: 300, max: 400)
             }
-            .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
+            .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
             .navigationTitle("")
             // Declared once here (not per thread) so the items keep their place while
             // arrowing through the list; the header hides while the inspector shows it.

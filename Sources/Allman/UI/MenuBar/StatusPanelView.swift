@@ -38,15 +38,15 @@ struct StatusPanelView: View {
                 AccountMenu {
                     HStack(spacing: 6) {
                         AccountHeader(session: session)
-                        Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
+                        Image(systemName: "chevron.down").font(AFont.microStrong).foregroundStyle(.tertiary)
                     }
                     .contentShape(Rectangle())
                 }
             } else {
                 Image(systemName: "person.crop.circle.badge.questionmark").font(.system(size: 30)).foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Allman").font(.headline)
-                    Text("No LinkedIn account yet").font(.caption).foregroundStyle(.secondary)
+                    Text("Allman").font(AFont.title)
+                    Text("No LinkedIn account yet").font(AFont.meta).foregroundStyle(.secondary)
                 }
             }
             Spacer()
@@ -66,8 +66,8 @@ struct StatusPanelView: View {
                 Label {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("The allman CLI isn't installed.").fontWeight(.medium)
-                        Text("curl -fsSL https://allman.sh/install.sh | bash").font(.caption.monospaced()).textSelection(.enabled)
-                        Text("or choose the binary in Settings.").font(.caption).foregroundStyle(.secondary)
+                        Text("curl -fsSL https://allman.sh/install.sh | bash").font(AFont.meta.monospaced()).textSelection(.enabled)
+                        Text("or choose the binary in Settings.").font(AFont.meta).foregroundStyle(.secondary)
                     }
                 } icon: { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
                 HStack {
@@ -79,7 +79,7 @@ struct StatusPanelView: View {
                 Label {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(waiting ? "Finish signing in to LinkedIn in the browser window." : (model.current.map { "Sign in to LinkedIn as @\($0.slug) to start syncing." } ?? "Sign in to LinkedIn to start syncing.")).fontWeight(.medium)
-                        Text("Your session stays on this Mac — nothing is sent anywhere else.").font(.caption).foregroundStyle(.secondary)
+                        Text("Your session stays on this Mac — nothing is sent anywhere else.").font(AFont.meta).foregroundStyle(.secondary)
                     }
                 } icon: { Image(systemName: "person.crop.circle.badge.exclamationmark").foregroundStyle(.orange) }
                 HStack {
@@ -108,7 +108,7 @@ struct StatusPanelView: View {
                         }
                         if !engine.networkInterface.isEmpty { Text("· \(engine.networkInterface)") }
                     }
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(AFont.meta).foregroundStyle(.secondary)
                 }
                 let unread = model.inbox.unreadCount
                 HStack(spacing: 8) {
@@ -138,7 +138,7 @@ struct StatusPanelView: View {
 
     private var accountsSection: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text("Accounts").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            Text("Accounts").font(AFont.metaStrong).foregroundStyle(.secondary)
                 .padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 4)
             ForEach(model.sessions) { session in
                 Button {
@@ -147,20 +147,20 @@ struct StatusPanelView: View {
                     HStack(spacing: 8) {
                         AvatarView(url: session.avatarURL, name: session.displayName, size: 22)
                         VStack(alignment: .leading, spacing: 0) {
-                            Text(session.displayName).font(.callout).lineLimit(1)
-                            Text("@\(session.slug)").font(.caption2).foregroundStyle(.tertiary)
+                            Text(session.displayName).font(AFont.secondary).lineLimit(1)
+                            Text("@\(session.slug)").font(AFont.micro).foregroundStyle(.tertiary)
                         }
                         Spacer()
                         if session.unreadCount > 0 {
                             Text("\(session.unreadCount)")
-                                .font(.caption2.weight(.semibold)).monospacedDigit()
+                                .font(AFont.microStrong).monospacedDigit()
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 6).padding(.vertical, 2)
                                 .background(Color.accentColor, in: Capsule())
                         }
                         StatusBadge(status: session.engine.status, syncing: session.engine.isSyncing, compact: true)
                         if session.id == model.current?.id {
-                            Image(systemName: "checkmark").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            Image(systemName: "checkmark").font(AFont.metaStrong).foregroundStyle(.secondary)
                         }
                     }
                     .contentShape(Rectangle())
@@ -178,11 +178,11 @@ struct StatusPanelView: View {
     private var activitySection: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("Recent activity").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                Text("Recent activity").font(AFont.metaStrong).foregroundStyle(.secondary)
                 Spacer()
-                if case .reconnecting(let n) = model.engine.status { Text("retry \(n)").font(.caption2).foregroundStyle(.secondary) }
+                if case .reconnecting(let n) = model.engine.status { Text("retry \(n)").font(AFont.micro).foregroundStyle(.secondary) }
                 if model.inbox.unreadCount > 0 {
-                    Button("Mark all read") { model.inbox.markAllSeen() }.buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
+                    Button("Mark all read") { model.inbox.markAllSeen() }.buttonStyle(.plain).font(AFont.meta).foregroundStyle(.secondary)
                 }
             }
             .padding(.horizontal, 14)
@@ -190,7 +190,7 @@ struct StatusPanelView: View {
             let items = model.engine.log.items
             if items.isEmpty {
                 Text("Nothing yet — the first sync will show up here.")
-                    .font(.callout).foregroundStyle(.tertiary)
+                    .font(AFont.secondary).foregroundStyle(.tertiary)
                     .padding(.horizontal, 14).padding(.bottom, 10)
             } else {
                 ScrollView {
@@ -215,14 +215,14 @@ struct StatusPanelView: View {
         HStack(spacing: 12) {
             Toggle("Launch at Login", isOn: Binding(get: { model.launchAtLogin }, set: { model.launchAtLogin = $0 }))
                 .toggleStyle(.checkbox)
-                .font(.callout)
+                .font(AFont.secondary)
             Spacer()
             Button("Network…") { model.show(.network) }
-                .buttonStyle(.plain).font(.callout)
+                .buttonStyle(.plain).font(AFont.secondary)
             Button("Settings…") { model.show(.settings) }
-                .buttonStyle(.plain).font(.callout)
+                .buttonStyle(.plain).font(AFont.secondary)
             Button("Quit") { NSApp.terminate(nil) }
-                .buttonStyle(.plain).font(.callout)
+                .buttonStyle(.plain).font(AFont.secondary)
                 .keyboardShortcut("q", modifiers: .command)
         }
         .padding(.horizontal, 14)
@@ -239,7 +239,7 @@ struct StatusBadge: View {
         HStack(spacing: 6) {
             Circle().fill(color).frame(width: 8, height: 8)
             Text(syncing && status.isHealthy ? "Syncing" : (compact ? status.shortLabel : status.label))
-                .font(.caption.weight(.medium))
+                .font(AFont.metaStrong)
                 .lineLimit(1)
                 .fixedSize()
         }
@@ -276,18 +276,18 @@ struct ActivityRow: View {
     private var content: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: item.kind.symbol)
-                .font(.system(size: 11))
+                .font(AFont.meta)
                 .foregroundStyle(tint)
                 .frame(width: 16, height: 16)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 1) {
-                Text(item.title).font(.callout).lineLimit(1)
+                Text(item.title).font(AFont.secondary).lineLimit(1)
                 if let d = item.detail, !d.isEmpty {
-                    Text(d).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    Text(d).font(AFont.meta).foregroundStyle(.secondary).lineLimit(2)
                 }
             }
             Spacer(minLength: 4)
-            Text(Fmt.relative(item.date, now: now)).font(.caption2).foregroundStyle(.tertiary).monospacedDigit()
+            Text(Fmt.relative(item.date, now: now)).font(AFont.micro).foregroundStyle(.tertiary).monospacedDigit()
         }
         .padding(.horizontal, 6).padding(.vertical, 5)
     }

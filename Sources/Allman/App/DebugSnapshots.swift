@@ -172,14 +172,32 @@ enum DebugSnapshots {
                     model.inbox.searchText = ""
                     try? await Task.sleep(for: .milliseconds(500))
                 }
-                if ProcessInfo.processInfo.environment["ALLMAN_SNAPSHOT_COMPOSE"] != nil {
-                    NotificationCenter.default.post(name: .allmanCompose, object: nil)
+                if let q = ProcessInfo.processInfo.environment["ALLMAN_SNAPSHOT_COMPOSE"] {
+                    model.inbox.composing = true
+                    model.inbox.composeQuery = q
                     try? await Task.sleep(for: .seconds(6)) // local + CLI search
-                    if let sheet = w.attachedSheet ?? w.sheets.first ?? NSApp.windows.first(where: { $0.isVisible && $0 !== w && $0.level == w.level && $0.frame.width < w.frame.width }) {
-                        capture(sheet, to: out.appendingPathComponent("compose.png"))
-                    } else {
-                        capture(w, to: out.appendingPathComponent("compose.png")) // whole window incl. sheet
-                    }
+                    capture(w, to: out.appendingPathComponent("compose.png"))
+                    model.inbox.composing = false
+                    try? await Task.sleep(for: .milliseconds(500))
+                }
+                // Voice note states (ALLMAN_SNAPSHOT_VOICE=1): recording bar, preview bar, then a fake send.
+                if ProcessInfo.processInfo.environment["ALLMAN_SNAPSHOT_VOICE"] != nil, let conv = target?.record.convId {
+                    model.inbox.select(conv)
+                    VoiceRecorder.debugState = .recording
+                    model.inbox.voiceDebugTick += 1
+                    try? await Task.sleep(for: .seconds(1.5))
+                    capture(w, to: out.appendingPathComponent("voice-recording.png"))
+                    let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("allman-snapshot-voice.m4a")
+                    try? Data(repeating: 0, count: 2048).write(to: tmp)
+                    VoiceRecorder.debugState = .recorded(tmp, 12_300)
+                    model.inbox.voiceDebugTick += 1
+                    try? await Task.sleep(for: .seconds(1.2))
+                    capture(w, to: out.appendingPathComponent("voice-preview.png"))
+                    VoiceRecorder.debugState = nil
+                    model.inbox.voiceDebugTick += 1
+                    _ = await model.inbox.sendAudio(tmp, durationMs: 12_300, to: conv)
+                    try? await Task.sleep(for: .seconds(2.5))
+                    capture(w, to: out.appendingPathComponent("voice-sent.png"))
                 }
             }
 

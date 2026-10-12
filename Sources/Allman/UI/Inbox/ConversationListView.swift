@@ -7,6 +7,8 @@ struct ConversationListView: View {
     @Environment(AppModel.self) private var model
     @FocusState private var listFocused: Bool
     @FocusState private var searchFocused: Bool
+    /// Return in the compose search picks the best match.
+    @State private var composeSubmit = 0
 
     var body: some View {
         @Bindable var inbox = model.inbox
@@ -16,10 +18,18 @@ struct ConversationListView: View {
         let showPins = !pins.isEmpty && !inbox.isSearching
         VStack(spacing: 0) {
             InboxBar()
-            SearchField(text: $inbox.searchText, focused: $searchFocused)
-                .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 8)
+            if inbox.composing {
+                SearchField(text: $inbox.composeQuery, focused: $searchFocused, prompt: "To: a name, or linkedin.com/in/…", onSubmit: { composeSubmit += 1 }, onCancel: { inbox.composing = false })
+                    .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 8)
+                    .onAppear { searchFocused = true }
+            } else {
+                SearchField(text: $inbox.searchText, focused: $searchFocused)
+                    .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 8)
+            }
             Group {
-                if rows.isEmpty && hits.isEmpty && !inbox.isLoading && !showPins && !inbox.searchingMessages {
+                if inbox.composing {
+                    PeopleSearchPane(query: inbox.composeQuery, submitToken: composeSubmit)
+                } else if rows.isEmpty && hits.isEmpty && !inbox.isLoading && !showPins && !inbox.searchingMessages {
                     ContentUnavailableView {
                         Label(emptyTitle(inbox), systemImage: inbox.filter == .unread ? "checkmark.circle" : "magnifyingglass")
                     } description: {
@@ -78,6 +88,7 @@ struct ConversationListView: View {
             case .composer: break // the composer observes this itself
             }
         }
+        .onChange(of: inbox.composing) { _, on in if on { searchFocused = true } else { listFocused = true } }
         .onAppear { listFocused = true }
         .sheet(item: Binding(get: { inbox.renamingLabel }, set: { inbox.renamingLabel = $0 })) { RenameLabelSheet(label: $0).environment(model) }
     }
@@ -253,10 +264,9 @@ struct InboxBar: View {
                         .onAppear { let used = Set(inbox.organizer.labels.map(\.icon)); newIcon = InboxLabel.icons.first { !used.contains($0) } ?? "tag" }
                     }
                 ConversationActions(convId: inbox.selectedConvId, asMenu: false)
-                Button { NotificationCenter.default.post(name: .allmanCompose, object: nil) } label: { BarIcon("square.and.pencil") }
+                Button { inbox.composing.toggle() } label: { BarIcon(inbox.composing ? "xmark.circle" : "square.and.pencil") }
                     .buttonStyle(.plain)
-                    .help("New message (⌘N)")
-                    .keyboardShortcut("n", modifiers: .command)
+                    .help(inbox.composing ? "Cancel new message (Esc)" : "New message (⌘N)")
                 }
             }
             FlowLayout(spacing: 4) {
@@ -395,6 +405,8 @@ struct SearchField: View {
     @Binding var text: String
     var focused: FocusState<Bool>.Binding
     var prompt = "Search people and messages"
+    var onSubmit: () -> Void = {}
+    var onCancel: () -> Void = {}
 
     var body: some View {
         HStack(spacing: 6) {
@@ -403,6 +415,8 @@ struct SearchField: View {
                 .textFieldStyle(.plain)
                 .font(AFont.body)
                 .focused(focused)
+                .onSubmit(onSubmit)
+                .onKeyPress(.escape) { onCancel(); return .handled }
             if !text.isEmpty {
                 Button { text = "" } label: { Image(systemName: "xmark.circle.fill").font(AFont.icon).foregroundStyle(.secondary) }.buttonStyle(.plain)
             }
@@ -429,6 +443,13 @@ struct ConversationRow: View {
         let hasNote = !org.note(r.convId).isEmpty
         HStack(alignment: .top, spacing: 10) {
             AvatarView(url: r.avatarURL, name: r.displayName, size: 40)
+                .overlay(alignment: .bottomTrailing) {
+                    // Which messenger this thread lives on (LinkedIn today).
+                    MessengerBadge(size: 11)
+                        .padding(1.5)
+                        .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 3.7, style: .continuous))
+                        .offset(x: 2, y: 2)
+                }
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(r.displayName)
@@ -482,7 +503,7 @@ struct ConversationRow: View {
         // region is the composed row *including* the overlay, so moving onto a
         // button doesn't count as leaving the row.
         .overlay(alignment: .topTrailing) {
-            if hovering {
+            if hovering || model.inbox.rowPopover?.convId == r.convId {
                 RowActions(convId: r.convId)
                     .padding(.top, 2)
                     .background(.regularMaterial, in: Capsule())
@@ -502,17 +523,44 @@ private struct RowActions: View {
         let inbox = model.inbox
         HStack(spacing: 0) {
             btn(inbox.isPinned(convId) ? "pin.fill" : "pin", "Pin") { inbox.togglePin(convId) }
-            btn("tag", "Labels") { inbox.select(convId); inbox.showLabelPicker = true }
-            btn("clock", "Snooze") { inbox.select(convId); inbox.showSnoozePicker = true }
-            btn("note.text", "Note") { inbox.select(convId); inbox.showNoteEditor = true }
+            btn("tag", "Labels") { open(.label) }
+                .popover(isPresented: shown(.label), arrowEdge: .bottom) { LabelPicker(convId: convId).environment(model) }
+            btn("clock", "Snooze") { open(.snooze) }
+                .popover(isPresented: shown(.snooze), arrowEdge: .bottom) { SnoozePicker(convId: convId) { inbox.rowPopover = nil }.environment(model) }
+            btn("note.text", "Note") { open(.note) }
+                .popover(isPresented: shown(.note), arrowEdge: .bottom) { NoteEditor(convId: convId, compact: true).environment(model) }
             btn(inbox.isArchived(convId) ? "tray.and.arrow.up" : "archivebox", "Archive") { inbox.toggleArchive(convId) }
         }
         .padding(.horizontal, 4)
     }
 
+    /// The popover opens on this row's button; the thread is selected too so the keys agree.
+    private func open(_ kind: InboxModel.RowAction) {
+        model.inbox.select(convId)
+        model.inbox.rowPopover = .init(convId: convId, kind: kind)
+    }
+
+    private func shown(_ kind: InboxModel.RowAction) -> Binding<Bool> {
+        Binding(
+            get: { model.inbox.rowPopover == .init(convId: convId, kind: kind) },
+            set: { if !$0, model.inbox.rowPopover?.convId == convId { model.inbox.rowPopover = nil } }
+        )
+    }
+
     private func btn(_ icon: String, _ help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) { BarIcon(icon) }
             .buttonStyle(.plain).help(help)
+    }
+}
+
+/// The people search that replaces the list while composing; Return picks the best match.
+struct PeopleSearchPane: View {
+    let query: String
+    let submitToken: Int
+    @State private var pick = 0
+
+    var body: some View {
+        PeopleSearchResults(query: query, submitToken: submitToken)
     }
 }
 

@@ -36,13 +36,13 @@ struct AccountSwitcher: View {
                     HStack(spacing: 10) {
                         AvatarView(url: session.avatarURL, name: session.displayName, size: 30)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(session.displayName).font(.callout.weight(.medium)).lineLimit(1)
-                            Text(subtitle(session)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            Text(session.displayName).font(AFont.bodyMedium).lineLimit(1)
+                            Text(subtitle(session)).font(AFont.meta).foregroundStyle(.secondary).lineLimit(1)
                         }
                         Spacer(minLength: 12)
                         if session.unreadCount > 0 {
                             Text("\(session.unreadCount)")
-                                .font(.caption2.weight(.semibold)).monospacedDigit()
+                                .font(AFont.microStrong).monospacedDigit()
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 6).padding(.vertical, 2)
                                 .background(Color.accentColor, in: Capsule())
@@ -50,7 +50,7 @@ struct AccountSwitcher: View {
                         Circle().fill(statusColor(session.engine.status)).frame(width: 8, height: 8)
                             .help(session.engine.status.label)
                         Image(systemName: "checkmark")
-                            .font(.caption.weight(.semibold))
+                            .font(AFont.metaStrong)
                             .foregroundStyle(.secondary)
                             .opacity(session.id == model.current?.id ? 1 : 0)
                     }
@@ -112,12 +112,12 @@ struct AccountHeader: View {
         HStack(spacing: 10) {
             AvatarView(url: session.avatarURL, name: session.displayName, size: size)
             VStack(alignment: .leading, spacing: 1) {
-                Text(session.displayName).font(.headline).lineLimit(1)
+                Text(session.displayName).font(AFont.title).lineLimit(1)
                 if let h = session.headline {
-                    Text(h).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Text(h).font(AFont.meta).foregroundStyle(.secondary).lineLimit(1)
                 }
                 if showSlug {
-                    Text("@\(session.slug) · LinkedIn").font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+                    Text("@\(session.slug) · LinkedIn").font(AFont.micro).foregroundStyle(.tertiary).lineLimit(1)
                 }
             }
         }

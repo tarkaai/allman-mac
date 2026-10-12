@@ -37,21 +37,21 @@ struct ContactInspector: View {
             HStack(alignment: .top, spacing: 12) {
                 AvatarView(url: r.avatarURL ?? conn?.profilePictureUrl.flatMap(URL.init(string:)), name: r.displayName, size: 56)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(r.displayName).font(.title3.weight(.semibold)).lineLimit(2)
+                    Text(r.displayName).font(AFont.title).lineLimit(2)
                     HStack(spacing: 6) {
-                        if let p = conn?.pronounText ?? pronoun(r.pronoun) { Text(p).font(.caption).foregroundStyle(.secondary) }
+                        if let p = conn?.pronounText ?? pronoun(r.pronoun) { Text(p).font(AFont.meta).foregroundStyle(.secondary) }
                         if let d = distance(r.distance) { badge(d) }
                         if r.isPremium == true { badge("Premium") }
-                        if r.isVerified == true { Image(systemName: "checkmark.seal.fill").font(.caption).foregroundStyle(.blue).help("Verified") }
+                        if r.isVerified == true { Image(systemName: "checkmark.seal.fill").font(AFont.meta).foregroundStyle(.blue).help("Verified") }
                     }
                 }
             }
             if let h = r.headline ?? conn?.headline, !h.isEmpty {
-                Text(h).font(.callout).foregroundStyle(.secondary).lineLimit(4).textSelection(.enabled)
+                Text(h).font(AFont.secondary).foregroundStyle(.secondary).lineLimit(4).textSelection(.enabled)
             }
-            if let loc = conn?.location, !loc.isEmpty { Label(loc, systemImage: "mappin.and.ellipse").font(.caption).foregroundStyle(.secondary) }
-            if let ind = conn?.industry { Label(ind, systemImage: "building.2").font(.caption).foregroundStyle(.secondary) }
-            if let c = conn?.connectedAt { Label("Connected \(Fmt.monthDayYear(c))", systemImage: "person.2").font(.caption).foregroundStyle(.secondary) }
+            if let loc = conn?.location, !loc.isEmpty { Label(loc, systemImage: "mappin.and.ellipse").font(AFont.meta).foregroundStyle(.secondary) }
+            if let ind = conn?.industry { Label(ind, systemImage: "building.2").font(AFont.meta).foregroundStyle(.secondary) }
+            if let c = conn?.connectedAt { Label("Connected \(Fmt.monthDayYear(c))", systemImage: "person.2").font(AFont.meta).foregroundStyle(.secondary) }
         }
     }
 
@@ -71,7 +71,7 @@ struct ContactInspector: View {
                             }
                         }
                         Button { inbox.showLabelPicker = true } label: {
-                            Image(systemName: "plus").font(.caption.weight(.semibold)).frame(width: 20, height: 20).background(Color.primary.opacity(0.06), in: Circle())
+                            Image(systemName: "plus").font(AFont.metaStrong).frame(width: 20, height: 20).background(Color.primary.opacity(0.06), in: Circle())
                         }
                         .buttonStyle(.plain).help("Add label (L)")
                     }
@@ -82,11 +82,11 @@ struct ContactInspector: View {
                 section(s.hidden ? "Snoozed" : "Reminder") {
                     HStack(spacing: 6) {
                         Image(systemName: s.until <= Date() ? "bell.badge.fill" : "clock").foregroundStyle(.orange)
-                        Text(Fmt.reminderTime(s.until)).font(.callout)
+                        Text(Fmt.reminderTime(s.until)).font(AFont.secondary)
                         Spacer()
-                        Button("Clear") { inbox.clearSnooze(convId) }.buttonStyle(.link).font(.caption)
+                        Button("Clear") { inbox.clearSnooze(convId) }.buttonStyle(.link).font(AFont.meta)
                     }
-                    if let n = s.note, !n.isEmpty { Text(n).font(.caption).foregroundStyle(.secondary) }
+                    if let n = s.note, !n.isEmpty { Text(n).font(AFont.meta).foregroundStyle(.secondary) }
                 }
             }
         }
@@ -96,10 +96,10 @@ struct ContactInspector: View {
         VStack(alignment: .leading, spacing: 16) {
             if let about = conn.about, !about.isEmpty {
                 section("About") {
-                    Text(about).font(.callout).lineLimit(aboutExpanded ? nil : 6).textSelection(.enabled)
+                    Text(about).font(AFont.secondary).lineLimit(aboutExpanded ? nil : 6).textSelection(.enabled)
                     if about.count > 280 {
                         Button(aboutExpanded ? "Show less" : "Show more") { withAnimation { aboutExpanded.toggle() } }
-                            .buttonStyle(.link).font(.caption)
+                            .buttonStyle(.link).font(AFont.meta)
                     }
                 }
             }
@@ -107,8 +107,8 @@ struct ContactInspector: View {
                 section("Experience") {
                     ForEach(Array(conn.positions.prefix(6).enumerated()), id: \.offset) { _, p in
                         VStack(alignment: .leading, spacing: 1) {
-                            Text([p.title, p.company].compactMap { $0 }.joined(separator: " · ")).font(.callout.weight(p.current == true ? .medium : .regular))
-                            if let d = p.dateRange { Text(d).font(.caption).foregroundStyle(.secondary) }
+                            Text([p.title, p.company].compactMap { $0 }.joined(separator: " · ")).font(p.current == true ? AFont.bodyMedium : AFont.body)
+                            if let d = p.dateRange { Text(d).font(AFont.meta).foregroundStyle(.secondary) }
                         }
                     }
                 }
@@ -117,23 +117,23 @@ struct ContactInspector: View {
                 section("Education") {
                     ForEach(Array(conn.education.prefix(3).enumerated()), id: \.offset) { _, e in
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(e.school ?? "").font(.callout)
-                            if !e.summary.isEmpty { Text(e.summary).font(.caption).foregroundStyle(.secondary) }
+                            Text(e.school ?? "").font(AFont.secondary)
+                            if !e.summary.isEmpty { Text(e.summary).font(AFont.meta).foregroundStyle(.secondary) }
                         }
                     }
                 }
             }
             if !conn.skills.isEmpty {
                 section("Skills") {
-                    Text(conn.skills.prefix(12).joined(separator: " · ")).font(.caption).foregroundStyle(.secondary)
+                    Text(conn.skills.prefix(12).joined(separator: " · ")).font(AFont.meta).foregroundStyle(.secondary)
                 }
             }
             HStack {
-                Text("From LinkedIn · \(conn.enrichedAt.map { Fmt.monthDayYear($0) } ?? "")").font(.caption2).foregroundStyle(.tertiary)
+                Text("From LinkedIn · \(conn.enrichedAt.map { Fmt.monthDayYear($0) } ?? "")").font(AFont.micro).foregroundStyle(.tertiary)
                 Spacer()
                 if let slug = conn.slug {
                     Button(model.inbox.enriching.contains(slug) ? "Refreshing…" : "Refresh") { model.inbox.enrich(slug: slug, force: true) }
-                        .buttonStyle(.link).font(.caption2)
+                        .buttonStyle(.link).font(AFont.micro)
                         .disabled(model.inbox.enriching.contains(slug))
                 }
             }
@@ -143,7 +143,7 @@ struct ContactInspector: View {
     private func notEnriched(_ r: ConversationRecord, _ conn: Connection?) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(conn == nil ? "Not in your stored connections." : "Only the headline is stored for this contact.")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(AFont.meta).foregroundStyle(.secondary)
             if let slug = r.slug {
                 let busy = model.inbox.enriching.contains(slug)
                 Button {
@@ -159,7 +159,22 @@ struct ContactInspector: View {
     }
 
     private func links(_ r: ConversationRecord) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        let inbox = model.inbox
+        let busy = inbox.backfilling.contains(r.convId)
+        return VStack(alignment: .leading, spacing: 6) {
+            if r.syncState?.fullyBackfilled == true {
+                HStack(spacing: 6) {
+                    Label("History complete", systemImage: "checkmark.circle").foregroundStyle(.secondary)
+                    Button("Refresh") { inbox.refreshRecent(r.convId, force: true) }.buttonStyle(.link)
+                }
+            } else {
+                Button { inbox.backfill(r.convId) } label: {
+                    Label(busy ? "Loading older history…" : "Load full history", systemImage: busy ? "clock.arrow.circlepath" : "clock.arrow.circlepath")
+                }
+                .buttonStyle(.link)
+                .disabled(busy)
+                .help("Walk this thread back to its first message (allman sync <conv>)")
+            }
             if let url = r.linkedInProfileURL {
                 Button { NSWorkspace.shared.open(url) } label: { Label("LinkedIn profile", systemImage: "person.crop.rectangle") }.buttonStyle(.link)
             }
@@ -167,10 +182,10 @@ struct ContactInspector: View {
                 Button { NSWorkspace.shared.open(url) } label: { Label("Thread on linkedin.com", systemImage: "arrow.up.right.square") }.buttonStyle(.link)
             }
             if let slug = r.slug {
-                Text("@\(slug)").font(.caption.monospaced()).foregroundStyle(.tertiary).textSelection(.enabled)
+                Text("@\(slug)").font(AFont.meta.monospaced()).foregroundStyle(.tertiary).textSelection(.enabled)
             }
         }
-        .font(.callout)
+        .font(AFont.secondary)
     }
 
     // MARK: Bits
@@ -178,13 +193,13 @@ struct ContactInspector: View {
     @ViewBuilder
     func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title.uppercased()).font(.caption2.weight(.semibold)).foregroundStyle(.secondary).kerning(0.5)
+            Text(title.uppercased()).font(AFont.microStrong).foregroundStyle(.secondary).kerning(0.5)
             content()
         }
     }
 
     private func badge(_ text: String) -> some View {
-        Text(text).font(.caption2.weight(.medium)).padding(.horizontal, 5).padding(.vertical, 1).background(.quaternary, in: Capsule())
+        Text(text).font(AFont.microStrong).padding(.horizontal, 5).padding(.vertical, 1).background(.quaternary, in: Capsule())
     }
 
     private func distance(_ d: String?) -> String? {

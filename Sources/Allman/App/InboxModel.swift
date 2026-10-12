@@ -158,6 +158,15 @@ final class InboxModel {
     var showNoteEditor = false
     var showSnippetPicker = false
     var renamingLabel: InboxLabel?
+    /// New Message mode: the sidebar search becomes a people search.
+    var composing = false { didSet { if composing { composeQuery = "" } } }
+    var composeQuery = ""
+    /// A popover opened from a row's own action button (anchored there, not at the bar).
+    enum RowAction: Equatable { case label, snooze, note }
+    struct RowPopover: Equatable { let convId: String; let kind: RowAction }
+    var rowPopover: RowPopover?
+    /// Dev snapshots: bumped after VoiceRecorder.debugState changes so composers re-sync.
+    var voiceDebugTick = 0
 
     func unreadCount(label id: String) -> Int {
         snapshots.filter { organizer.has(label: id, $0.record.convId) && readState.isUnread($0) && !organizer.isArchived($0) }.count
@@ -457,7 +466,11 @@ final class InboxModel {
         let keep = items.filter { item in
             if case .failed = item.state { return true }
             let since = Int64(item.createdAt.timeIntervalSince1970 * 1000) - 120_000
-            let stored = msgs.contains { $0.isFromMe && $0.timestamp >= since && $0.body.trimmingCharacters(in: .whitespacesAndNewlines) == item.body }
+            let stored = msgs.contains { m in
+                guard m.isFromMe, m.timestamp >= since else { return false }
+                if item.audioURL != nil { return m.attachments.contains { $0.type == "voice" || $0.type == "audio" } }
+                return m.body.trimmingCharacters(in: .whitespacesAndNewlines) == item.body
+            }
             return !stored
         }
         if keep.count != items.count { withAnimation(nil) { outgoing[convId] = keep } }
@@ -611,6 +624,9 @@ final class InboxModel {
         let createdAt: Date
         let replyTo: Message?
         var state: State = .sending
+        /// A voice note being sent: the local recording and its length.
+        var audioURL: URL? = nil
+        var audioDurationMs: Int? = nil
 
         /// What the thread renders: a from-me message carrying the quote if any.
         var asMessage: Message {
@@ -618,7 +634,16 @@ final class InboxModel {
             if let r = replyTo {
                 attachments.append(Attachment(replyingTo: r))
             }
+            if audioURL != nil {
+                attachments.append(Attachment(type: "voice", url: nil, name: audioURL?.lastPathComponent, size: nil, mimeType: "audio/mp4", previewUrl: nil, width: nil, height: nil, durationMs: audioDurationMs, title: nil, description: nil, originalText: nil, authorName: nil))
+            }
             return Message(urn: "outgoing:\(id)", timestamp: Int64(createdAt.timeIntervalSince1970 * 1000), fromUrn: nil, fromName: nil, isFromMe: true, body: body, reactions: [], attachments: attachments, originToken: nil, subject: nil)
+        }
+
+        /// Media the thread can render for the placeholder (the local recording).
+        var localMedia: [String: URL] {
+            guard let audioURL else { return [:] }
+            return [StoreReader.mediaKey(messageUrn: "outgoing:\(id)", index: replyTo == nil ? 0 : 1): audioURL]
         }
     }
     /// In-flight and failed sends per conversation, oldest first.
@@ -628,6 +653,10 @@ final class InboxModel {
     func retry(_ id: String, in convId: String) {
         guard let item = outgoing[convId]?.first(where: { $0.id == id }) else { return }
         withAnimation { outgoing[convId]?.removeAll { $0.id == id } }
+        if let url = item.audioURL, let ms = item.audioDurationMs {
+            Task { _ = await sendAudio(url, durationMs: ms, to: convId) }
+            return
+        }
         if let r = item.replyTo { replyingTo[convId] = r }
         Task { _ = await send(item.body, to: convId) }
     }
@@ -784,6 +813,43 @@ final class InboxModel {
                 outgoing[target]?[i].state = .failed(reason)
             }
             composerError = nil
+            return false
+        }
+    }
+
+    /// A recorded voice note, through `allman send <target> --audio <file>`.
+    func sendAudio(_ fileURL: URL, durationMs: Int, to convId: String? = nil) async -> Bool {
+        let target = convId ?? selectedConvId
+        guard let target, let ctx = context, let snap = byId[target] else { return false }
+        var item = OutgoingMessage(id: UUID().uuidString, convId: target, body: "", createdAt: Date(), replyTo: nil)
+        item.audioURL = fileURL
+        item.audioDurationMs = durationMs
+        withAnimation(.spring(duration: 0.35)) { outgoing[target, default: []].append(item) }
+        isSending = true
+        defer { isSending = !outgoing.values.allSatisfy { $0.allSatisfy { if case .failed = $0.state { return true } else { return false } } } }
+        let args = ["send", snap.record.sendTarget, "--audio", fileURL.path, "--duration-ms", String(durationMs), "--json"]
+        do {
+            _ = try await AllmanRunner.runJSON(args, as: SendResult.self, context: ctx, timeout: 180)
+            await reload(convIds: [target])
+            await loadMessages(convId: target, force: true)
+            withAnimation(nil) { outgoing[target]?.removeAll { $0.id == item.id } }
+            markSeen(target)
+            return true
+        } catch {
+            let reason: String
+            if let err = error as? AllmanError {
+                if err.stderr.contains("unknown option") && err.stderr.contains("audio") {
+                    reason = "Sending voice notes needs a newer allman CLI (send --audio)."
+                } else if err.stderr.contains("received before send") {
+                    reason = "New messages arrived in this thread — read them, then try again."
+                    await reload(convIds: [target])
+                } else {
+                    reason = err.friendlyMessage
+                }
+            } else {
+                reason = error.localizedDescription
+            }
+            if let i = outgoing[target]?.firstIndex(where: { $0.id == item.id }) { outgoing[target]?[i].state = .failed(reason) }
             return false
         }
     }

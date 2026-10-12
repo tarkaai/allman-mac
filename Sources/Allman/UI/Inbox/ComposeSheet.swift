@@ -2,89 +2,80 @@ import SwiftUI
 
 /// "New Message": find someone in your conversations, your connections, on
 /// LinkedIn (via `allman people`), or paste a profile URL — then start a draft.
-struct ComposeSheet: View {
+/// "New Message" in the page shape: the sidebar's search becomes a people
+/// search (your conversations, your connections, LinkedIn via `allman people`,
+/// or a pasted profile link) and the results take the list's place. Picking
+/// someone starts a draft in the detail pane.
+struct PeopleSearchResults: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
-    @State private var query = ProcessInfo.processInfo.environment["ALLMAN_SNAPSHOT_COMPOSE"] ?? ""
+    let query: String
+    var submitToken = 0
     @State private var remote: [PersonHit] = []
     @State private var searching = false
     @State private var remoteError: String?
     @State private var searchTask: Task<Void, Never>?
     @State private var connectTarget: PersonHit?
-    @FocusState private var focused: Bool
 
     var body: some View {
         let inbox = model.inbox
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("Name, or a linkedin.com/in/… link", text: $query)
-                    .textFieldStyle(.plain)
-                    .font(.title3)
-                    .focused($focused)
-                    .onSubmit { pickFirst() }
-                if searching { ProgressView().controlSize(.small) }
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+        List {
+            if let slug = pastedSlug {
+                Section("Profile link") {
+                    row(name: "linkedin.com/in/\(slug)", subtitle: "Start a conversation with this profile", symbol: "link") {
+                        start(DraftRecipient(slug: slug, name: slug, headline: nil, avatarURL: nil))
+                    }
+                }
             }
-            .padding(14)
-            Divider()
-            List {
-                if let slug = pastedSlug {
-                    Section("Profile link") {
-                        row(name: "linkedin.com/in/\(slug)", subtitle: "Start a conversation with this profile", symbol: "link") {
-                            start(DraftRecipient(slug: slug, name: slug, headline: nil, avatarURL: nil))
+            let convs = matchingConversations
+            if !convs.isEmpty {
+                Section("Conversations") {
+                    ForEach(convs) { snap in
+                        personRow(name: snap.record.displayName, subtitle: snap.record.headline ?? snap.record.slug.map { "@\($0)" } ?? "", avatar: snap.record.avatarURL) {
+                            inbox.draft = nil
+                            inbox.select(snap.record.convId)
+                            inbox.composing = false
                         }
                     }
                 }
-                let convs = matchingConversations
-                if !convs.isEmpty {
-                    Section("Conversations") {
-                        ForEach(convs) { snap in
-                            personRow(name: snap.record.displayName, subtitle: snap.record.headline ?? snap.record.slug.map { "@\($0)" } ?? "", avatar: snap.record.avatarURL) {
-                                inbox.draft = nil
-                                inbox.select(snap.record.convId)
-                                dismiss()
+            }
+            let people = mergedPeople
+            if !people.isEmpty || remoteError != nil {
+                Section(searching ? "People · searching LinkedIn…" : "People") {
+                    ForEach(people) { person in
+                        HStack(spacing: 8) {
+                            personRow(name: person.name, subtitle: person.subtitle, avatar: person.avatarURL, badge: person.badge) {
+                                if let slug = person.slug { start(DraftRecipient(slug: slug, name: person.name, headline: person.subtitle, avatarURL: person.avatarURL)) }
+                            }
+                            .disabled(person.slug == nil)
+                            if let hit = remote.first(where: { "li:\($0.profileId ?? $0.slug ?? $0.name)" == person.id }), hit.distance != "DISTANCE_1", hit.slug != nil {
+                                Button("Connect") { connectTarget = hit }
+                                    .controlSize(.small)
+                                    .help("Send a connection request (allman connect)")
                             }
                         }
                     }
-                }
-                let people = mergedPeople
-                if !people.isEmpty || remoteError != nil {
-                    Section(searching ? "People · searching LinkedIn…" : "People") {
-                        ForEach(people) { person in
-                            HStack(spacing: 8) {
-                                personRow(name: person.name, subtitle: person.subtitle, avatar: person.avatarURL, badge: person.badge) {
-                                    if let slug = person.slug { start(DraftRecipient(slug: slug, name: person.name, headline: person.subtitle, avatarURL: person.avatarURL)) }
-                                }
-                                .disabled(person.slug == nil)
-                                if let hit = remote.first(where: { "li:\($0.profileId ?? $0.slug ?? $0.name)" == person.id }), hit.distance != "DISTANCE_1", hit.slug != nil {
-                                    Button("Connect") { connectTarget = hit }
-                                        .controlSize(.small)
-                                        .help("Send a connection request (allman connect)")
-                                }
-                            }
-                        }
-                        if let remoteError {
-                            Label(remoteError, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.secondary)
-                        }
+                    if let remoteError {
+                        Label(remoteError, systemImage: "exclamationmark.triangle").font(AFont.meta).foregroundStyle(.secondary)
                     }
                 }
-                if query.trimmingCharacters(in: .whitespaces).count < 2 {
-                    Text("Type a name to search your conversations and connections. LinkedIn search kicks in after three characters.")
-                        .font(.callout).foregroundStyle(.secondary)
-                        .listRowSeparator(.hidden)
-                }
             }
-            .listStyle(.inset)
+            if query.trimmingCharacters(in: .whitespaces).count < 2 {
+                Text("Type a name, or paste a linkedin.com/in/… link. Your conversations and connections match as you type; LinkedIn search kicks in after three characters.")
+                    .font(AFont.secondary).foregroundStyle(.secondary)
+                    .listRowSeparator(.hidden)
+            }
         }
-        .frame(width: 520, height: 520)
+        .listStyle(.sidebar)
+        .contentMargins(.top, 0, for: .scrollContent)
         .sheet(item: $connectTarget) { hit in ConnectSheet(slug: hit.slug ?? "", name: hit.name).environment(model) }
         .onAppear {
-            focused = true
             inbox.loadConnectionsIfNeeded()
             if !query.isEmpty { scheduleRemoteSearch(query) }
         }
         .onChange(of: query) { _, q in scheduleRemoteSearch(q) }
+        .onChange(of: submitToken) { _, _ in pickFirst() }
+        .onKeyPress(.escape) { inbox.composing = false; return .handled }
+        .onDisappear { searchTask?.cancel() }
     }
 
     // MARK: Matching
@@ -105,11 +96,15 @@ struct ComposeSheet: View {
     }
 
     private var matchingConversations: [ConversationSnapshot] {
-        let q = normalizedQuery
+        let q = query.trimmingCharacters(in: .whitespaces)
         guard q.count >= 2 else { return [] }
-        return Array(model.inbox.snapshots.filter {
-            $0.record.displayName.lowercased().contains(q) || ($0.record.slug?.lowercased().contains(q) ?? false)
-        }.prefix(6))
+        var scores: [String: Int] = [:]
+        let rows = model.inbox.snapshots.filter {
+            let sc = SearchRank.score(name: $0.record.displayName, secondary: [$0.record.slug, $0.record.headline], query: q)
+            if sc > 0 { scores[$0.record.convId] = sc }
+            return sc > 0
+        }
+        return Array(rows.sorted { (scores[$0.record.convId] ?? 0, $0.activityDate) > (scores[$1.record.convId] ?? 0, $1.activityDate) }.prefix(6))
     }
 
     /// Someone to message: LinkedIn hits first (LinkedIn's relevance order, with
@@ -136,19 +131,23 @@ struct ComposeSheet: View {
         for c in matchingConnections {
             guard seen.insert(c.flagshipId).inserted, !(c.slug.map { seen.contains($0) } ?? false) else { continue }
             if let slug = c.slug { seen.insert(slug) }
-            out.append(Person(id: "conn:\(c.flagshipId)", name: c.name, subtitle: c.subtitle, slug: c.slug, avatarURL: nil, badge: nil))
+            out.append(Person(id: "conn:\(c.flagshipId)", name: c.name, subtitle: c.subtitle, slug: c.slug, avatarURL: c.profilePictureUrl.flatMap(URL.init(string:)), badge: nil))
         }
         return out
     }
 
     private var matchingConnections: [Connection] {
-        let q = normalizedQuery
+        let q = query.trimmingCharacters(in: .whitespaces)
         guard q.count >= 2 else { return [] }
         let convSlugs = Set(matchingConversations.compactMap { $0.record.slug })
-        return Array(model.inbox.connections.filter {
-            !convSlugs.contains($0.slug ?? "") &&
-            ($0.name.lowercased().contains(q) || ($0.slug?.lowercased().contains(q) ?? false) || ($0.company?.lowercased().contains(q) ?? false))
-        }.prefix(12))
+        var scores: [String: Int] = [:]
+        let rows = model.inbox.connections.filter { c in
+            guard !convSlugs.contains(c.slug ?? "") else { return false }
+            let sc = SearchRank.score(name: c.name, secondary: [c.slug, c.company, c.title], query: q)
+            if sc > 0 { scores[c.id] = sc }
+            return sc > 0
+        }
+        return Array(rows.sorted { (scores[$0.id] ?? 0, $0.name) > (scores[$1.id] ?? 0, $1.name) }.prefix(12))
     }
 
     private func scheduleRemoteSearch(_ q: String) {
@@ -174,15 +173,16 @@ struct ComposeSheet: View {
         }
     }
 
-    private func pickFirst() {
+    /// Return in the search field: the best match.
+    func pickFirst() {
         if let slug = pastedSlug { start(DraftRecipient(slug: slug, name: slug, headline: nil, avatarURL: nil)); return }
-        if let c = matchingConversations.first { model.inbox.draft = nil; model.inbox.select(c.record.convId); dismiss(); return }
+        if let c = matchingConversations.first { model.inbox.draft = nil; model.inbox.select(c.record.convId); model.inbox.composing = false; return }
         if let p = mergedPeople.first(where: { $0.slug != nil }), let slug = p.slug { start(DraftRecipient(slug: slug, name: p.name, headline: p.subtitle, avatarURL: p.avatarURL)) }
     }
 
     private func start(_ recipient: DraftRecipient) {
         model.inbox.startDraft(recipient)
-        dismiss()
+        model.inbox.composing = false
     }
 
     // MARK: Rows
@@ -193,10 +193,10 @@ struct ComposeSheet: View {
                 AvatarView(url: avatar, name: name, size: 32)
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 6) {
-                        Text(name).font(.body)
-                        if let badge { Text(badge).font(.caption2.weight(.medium)).padding(.horizontal, 5).padding(.vertical, 1).background(.quaternary, in: Capsule()) }
+                        Text(name).font(AFont.body)
+                        if let badge { Text(badge).font(AFont.microStrong).padding(.horizontal, 5).padding(.vertical, 1).background(.quaternary, in: Capsule()) }
                     }
-                    if !subtitle.isEmpty { Text(subtitle).font(.callout).foregroundStyle(.secondary).lineLimit(1) }
+                    if !subtitle.isEmpty { Text(subtitle).font(AFont.secondary).foregroundStyle(.secondary).lineLimit(1) }
                 }
                 Spacer()
             }
@@ -210,8 +210,8 @@ struct ComposeSheet: View {
             HStack(spacing: 10) {
                 Image(systemName: symbol).frame(width: 32, height: 32).background(.quaternary, in: Circle())
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(name).font(.body)
-                    Text(subtitle).font(.callout).foregroundStyle(.secondary)
+                    Text(name).font(AFont.body)
+                    Text(subtitle).font(AFont.secondary).foregroundStyle(.secondary)
                 }
                 Spacer()
             }

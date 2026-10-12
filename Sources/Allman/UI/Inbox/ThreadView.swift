@@ -92,6 +92,7 @@ struct ThreadView: View {
                                     showsTail: true,
                                     reveal: model.debugShowTimes ? Self.timeGutter : reveal,
                                     maxWidth: maxBubble,
+                                    media: item.localMedia,
                                     pending: item.state,
                                     onReact: { _ in },
                                     onReply: {},

@@ -48,7 +48,15 @@ case "$cmd" in
     printf '{"event":"sync.complete","conversationsSynced":0,"messagesSynced":0}\n'
     ;;
   send)
-    target="${rest[0]}"; body="${rest[1]}"
+    target="${rest[0]}"; body=""; audio=""; duration=0
+    i=1; while [[ $i -lt ${#rest[@]} ]]; do
+      case "${rest[$i]}" in
+        --audio) audio="${rest[$((i+1))]}"; i=$((i+2)) ;;
+        --duration-ms) duration="${rest[$((i+1))]}"; i=$((i+2)) ;;
+        --*) i=$((i+1)) ;;
+        *) [[ -z "$body" ]] && body="${rest[$i]}"; i=$((i+1)) ;;
+      esac
+    done
     sleep "${FAKE_SEND_DELAY:-2}"
     if [[ "${FAKE_SEND_FAIL:-0}" == "1" ]]; then echo "LinkedIn API error: HTTP 500" >&2; exit 1; fi
     # Resolve the thread: slug/id entry in the account dir, else a RECORD.json mentioning it.
@@ -56,16 +64,25 @@ case "$cmd" in
     if [[ -e "$acct/$target" ]]; then conv="$(cd "$acct/$target" && pwd -P)"
     else conv="$(grep -ls -- "$target" "$acct"/2-*/RECORD.json 2>/dev/null | head -1 | xargs -I{} dirname {})"; fi
     [[ -n "$conv" && -d "$conv" ]] || { echo "fake-allman: conversation $target not found" >&2; exit 1; }
+    # Some stores carry a legacy slug *directory* beside the 2-… conversation dir; write where the app reads.
+    cid="$(json_field "$conv/RECORD.json" convId 2>/dev/null || true)"
+    if [[ -n "$cid" && -d "$acct/$cid" ]]; then conv="$acct/$cid"; fi
     ts="$(now_ms)"
     urn="urn:li:messagingMessage:fake-$ts"
     me="$(json_field "$acct/AUTH.json" urn)"; name="$(json_field "$acct/AUTH.json" name)"
     file="$conv/messages/$(date +%Y-%m).jsonl"; mkdir -p "$conv/messages"
-    python3 - "$file" "$urn" "$ts" "$me" "$name" "$body" <<'EOF'
+    attachments="[]"
+    if [[ -n "$audio" ]]; then
+      mkdir -p "$conv/media"
+      cp "$audio" "$conv/media/fake-$ts-0.${audio##*.}"
+      attachments="[{\"type\":\"voice\",\"durationMs\":$duration,\"name\":\"$(basename "$audio")\",\"mimeType\":\"audio/mp4\"}]"
+    fi
+    python3 - "$file" "$urn" "$ts" "$me" "$name" "$body" "$attachments" <<'EOF'
 import json, sys
-f, urn, ts, me, name, body = sys.argv[1:]
+f, urn, ts, me, name, body, attachments = sys.argv[1:]
 with open(f, "a") as out:
     out.write(json.dumps({"urn": urn, "timestamp": int(ts), "fromUrn": me, "fromName": name, "isFromMe": True,
-                          "body": body, "reactions": [], "attachments": [], "originToken": None}) + "\n")
+                          "body": body, "reactions": [], "attachments": json.loads(attachments), "originToken": None}) + "\n")
 EOF
     printf '{"messageUrn":"%s","conversationUrn":"urn:li:messagingThread:%s","sentAt":%s}\n' "$urn" "$(basename "$conv")" "$ts"
     ;;

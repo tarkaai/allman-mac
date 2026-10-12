@@ -7,25 +7,37 @@ import SwiftUI
 /// with the page's actions on the right.
 struct InboxWindow: View {
     @Environment(AppModel.self) private var model
-    @State private var composing = false
     @State private var choosingSyncWindow = false
+    /// Tracks the sidebar so the experience switcher can move to the detail's leading
+    /// slot when the column is collapsed (it lives in the sidebar's toolbar otherwise).
+    @State private var columns: NavigationSplitViewVisibility = .all
 
     var body: some View {
         @Bindable var inbox = model.inbox
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columns) {
             SidebarView()
                 .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 440)
         } detail: {
-            switch model.experience {
-            case .messenger: MessengerDetail()
-            case .network: NetworkDetail()
-            case .insights: InsightsView()
-            case .settings: SettingsDetail()
+            Group {
+                switch model.experience {
+                case .messenger: MessengerDetail()
+                case .network: NetworkDetail()
+                case .insights: InsightsView()
+                case .settings: SettingsDetail()
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .navigation) {
+                    if columns == .detailOnly { ExperienceSwitcher() }
+                }
             }
         }
         .navigationTitle("")
-        .sheet(isPresented: $composing) { ComposeSheet().environment(model) }
-        .onReceive(NotificationCenter.default.publisher(for: .allmanCompose)) { _ in model.experience = .messenger; composing = true }
+        .onReceive(NotificationCenter.default.publisher(for: .allmanCompose)) { _ in
+            model.experience = .messenger
+            withAnimation(.easeInOut(duration: 0.2)) { columns = .all }
+            model.inbox.composing = true
+        }
         .onReceive(NotificationCenter.default.publisher(for: .allmanSyncWindow)) { _ in choosingSyncWindow = true }
         .sheet(isPresented: $choosingSyncWindow) { SyncWindowSheet().environment(model) }
         .frame(minWidth: 900, minHeight: 560)

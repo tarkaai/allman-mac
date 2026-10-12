@@ -44,6 +44,7 @@ targets:
         NSSupportsSuddenTermination: false
         NSUserNotificationAlertStyle: alert
         NSSpeechRecognitionUsageDescription: "Allman transcribes LinkedIn voice notes on this Mac so you can read them."
+        NSMicrophoneUsageDescription: "Allman records voice notes you choose to send; nothing is captured otherwise."
         CFBundleURLTypes:
           - CFBundleURLName: sh.allman.mac
             CFBundleURLSchemes: [allman]

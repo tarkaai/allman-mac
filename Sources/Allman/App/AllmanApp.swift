@@ -14,7 +14,7 @@ struct AllmanApp: App {
     private var model: AppModel { AppModel.shared }
 
     var body: some Scene {
-        Window("Inbox", id: "inbox") {
+        Window("Allman", id: "inbox") {
             InboxWindow()
                 .environment(model)
         }
@@ -23,6 +23,10 @@ struct AllmanApp: App {
         .handlesExternalEvents(matching: ["inbox"])
         .commands {
             CommandGroup(replacing: .newItem) {}
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") { model.show(.settings) }
+                    .keyboardShortcut(",", modifiers: .command)
+            }
             CommandGroup(replacing: .importExport) {
                 Button("Export Conversations as CSV…") { model.exportConversationsCSV() }
                     .disabled(model.inbox.snapshots.isEmpty)
@@ -109,9 +113,5 @@ struct AllmanApp: App {
             }
         }
 
-        Settings {
-            SettingsView()
-                .environment(model)
-        }
     }
 }

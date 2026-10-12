@@ -78,7 +78,7 @@ struct SnippetSettingsView: View {
         let store = model.snippets
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Saved replies, one keystroke away in the message field (⇧⌘S, or type / in an empty field).")
+                Text("Available in the message field with ⇧⌘S, the quote button, or a lone / in an empty field.")
                     .font(.callout).foregroundStyle(.secondary)
                 Spacer()
             }
@@ -109,7 +109,9 @@ struct SnippetSettingsView: View {
             }
             Text("Variables: " + Snippet.variables.map { "{\($0.name)}" }.joined(separator: " ")).font(.caption.monospaced()).foregroundStyle(.tertiary)
         }
-        .padding(16)
+        .padding(20)
+        .frame(maxWidth: 760, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .sheet(isPresented: $creating) { SnippetEditor(snippet: nil).environment(model) }
         .sheet(item: $editing) { SnippetEditor(snippet: $0).environment(model) }
     }

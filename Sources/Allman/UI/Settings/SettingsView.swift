@@ -1,17 +1,83 @@
 import AppKit
 import SwiftUI
 
-struct SettingsView: View {
-    var body: some View {
-        TabView {
-            GeneralSettingsView().tabItem { Label("General", systemImage: "gear") }
-            SnippetSettingsView().tabItem { Label("Snippets", systemImage: "text.quote") }
+enum SettingsSection: String, CaseIterable, Identifiable {
+    case accounts, store, cli, behavior, snippets
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .accounts: return "Accounts"
+        case .store: return "Store"
+        case .cli: return "allman CLI"
+        case .behavior: return "Behavior"
+        case .snippets: return "Snippets"
         }
-        .frame(width: 560)
+    }
+    var symbol: String {
+        switch self {
+        case .accounts: return "person.crop.circle"
+        case .store: return "externaldrive"
+        case .cli: return "terminal"
+        case .behavior: return "slider.horizontal.3"
+        case .snippets: return "text.quote"
+        }
+    }
+    var blurb: String {
+        switch self {
+        case .accounts: return "Every signed-in account syncs and notifies; the messenger shows one at a time."
+        case .store: return "Where the allman CLI keeps conversations — shared with the CLI and TUI."
+        case .cli: return "The allman binary every write goes through."
+        case .behavior: return "Launch, notifications, sync cadence, transcripts."
+        case .snippets: return "Saved replies with placeholders, one keystroke away."
+        }
     }
 }
 
+struct SettingsSidebar: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        @Bindable var model = model
+        List(selection: $model.settingsSection) {
+            ForEach(SettingsSection.allCases) { s in Label(s.title, systemImage: s.symbol).tag(s) }
+            Section {
+                Text("Allman \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")").font(AFont.meta).foregroundStyle(.tertiary)
+            }
+        }
+        .listStyle(.sidebar)
+        .contentMargins(.top, 0, for: .scrollContent)
+    }
+}
+
+struct SettingsDetail: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let section = model.settingsSection
+        Group {
+            if section == .snippets {
+                SnippetSettingsView()
+            } else {
+                GeneralSettingsView(section: section)
+            }
+        }
+        .navigationTitle("")
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                PageHeader(symbol: section.symbol, title: section.title, line1: section.blurb)
+            }
+            .sharedBackgroundVisibility(.hidden)
+        }
+    }
+}
+
+/// Legacy single-form settings (used by the inline Settings page, one section at a time).
+struct SettingsView: View {
+    var body: some View { SettingsDetail() }
+}
+
 struct GeneralSettingsView: View {
+    var section: SettingsSection = .accounts
     @Environment(AppModel.self) private var model
     @AppStorage(StorePaths.storeOverrideKey) private var storeOverride = ""
     @AppStorage(AllmanBinary.overrideKey) private var binaryOverride = ""
@@ -23,6 +89,7 @@ struct GeneralSettingsView: View {
 
     var body: some View {
         Form {
+            if section == .accounts {
             Section {
                 ForEach(model.sessions) { session in
                     HStack(spacing: 12) {
@@ -70,14 +137,13 @@ struct GeneralSettingsView: View {
                             .frame(width: 380)
                         }
                     Spacer()
-                    Text(model.sessions.isEmpty ? "Sign in to LinkedIn to get started." : "Every account syncs and notifies; the inbox shows one at a time.")
-                        .font(.caption).foregroundStyle(.secondary)
+                    if model.sessions.isEmpty { Text("Sign in to LinkedIn to get started.").font(AFont.meta).foregroundStyle(.secondary) }
                 }
-            } header: {
-                Text("Accounts")
+            }
             }
 
-            Section("Store") {
+            if section == .store {
+            Section {
                 LabeledContent("Location") {
                     HStack {
                         Text(model.storeURL.path).font(.callout.monospaced()).textSelection(.enabled).lineLimit(1).truncationMode(.middle)
@@ -86,11 +152,17 @@ struct GeneralSettingsView: View {
                 }
                 TextField("Override path", text: $storeOverride, prompt: Text("~/.allman"))
                     .onSubmit { model.restart() }
+                if StorePaths.overrideIsInvalid {
+                    Label("“\(storeOverride)” is not a directory — ignored; using the default store.", systemImage: "exclamationmark.triangle.fill")
+                        .font(AFont.meta).foregroundStyle(.orange)
+                }
                 Text("Leave blank to use ~/.allman (or $ALLMAN_STORE). The same store the allman CLI and TUI use.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(AFont.meta).foregroundStyle(.secondary)
+            }
             }
 
-            Section("allman CLI") {
+            if section == .cli {
+            Section {
                 LabeledContent("Binary") {
                     if let b = model.binaryURL {
                         HStack {
@@ -108,8 +180,10 @@ struct GeneralSettingsView: View {
                 }
                 Text("Install: curl -fsSL https://allman.sh/install.sh | bash").font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
             }
+            }
 
-            Section("Behavior") {
+            if section == .behavior {
+            Section {
                 Toggle("Launch at login", isOn: Binding(get: { model.launchAtLogin }, set: { model.launchAtLogin = $0 }))
                 Toggle("Notify for new messages", isOn: $notificationsEnabled)
                 Toggle("Transcribe voice notes on this Mac", isOn: Binding(get: { model.transcripts.isEnabled }, set: { model.transcripts.isEnabled = $0 }))
@@ -123,18 +197,20 @@ struct GeneralSettingsView: View {
                 Text("Live updates arrive instantly over LinkedIn's realtime stream; the periodic sync is a safety net for anything missed while offline.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            }
 
+            if section == .store || section == .cli {
             Section {
                 HStack {
                     Button("Apply & Restart Sync") { model.restart() }
                     Spacer()
-                    Text("Allman \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")")
-                        .font(.caption).foregroundStyle(.tertiary)
                 }
+            }
             }
         }
         .formStyle(.grouped)
-        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: 760, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func chooseBinary() {

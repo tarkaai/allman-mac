@@ -15,12 +15,9 @@ struct ConversationListView: View {
         let pins = inbox.pinnedInView
         let showPins = !pins.isEmpty && !inbox.isSearching
         VStack(spacing: 0) {
-            ProfileHeader()
-            Divider()
             InboxBar()
             SearchField(text: $inbox.searchText, focused: $searchFocused)
-                .padding(.horizontal, 10).padding(.bottom, 6)
-            Divider()
+                .padding(.horizontal, 12).padding(.bottom, 6)
             Group {
                 if rows.isEmpty && hits.isEmpty && !inbox.isLoading && !showPins && !inbox.searchingMessages {
                     ContentUnavailableView {
@@ -28,11 +25,12 @@ struct ConversationListView: View {
                     } description: {
                         Text(inbox.searchText.isEmpty ? "Nothing matches this inbox." : (inbox.searchText.trimmingCharacters(in: .whitespaces).count < 3 ? "Type at least three characters to search inside messages." : "No conversation or message contains this."))
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     List(selection: $inbox.sidebarSelection) {
                         if showPins {
                             PinnedGrid(pins: pins)
-                                .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 8, trailing: 8))
+                                .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 6, trailing: 8))
                                 .listRowSeparator(.hidden)
                                 .selectionDisabled()
                         }
@@ -61,6 +59,7 @@ struct ConversationListView: View {
                         }
                     }
                     .listStyle(.sidebar)
+                    .contentMargins(.top, 0, for: .scrollContent)
                     .scrollEdgeEffectStyle(.soft, for: .top)
                     .focused($listFocused)
                     .onKeyPress(.return) { inbox.requestFocus(.composer); return .handled }
@@ -72,7 +71,6 @@ struct ConversationListView: View {
                 }
             }
         }
-        .toolbar(removing: .sidebarToggle)
         .onChange(of: inbox.focusToken) { _, _ in
             switch inbox.focusTarget {
             case .list: listFocused = true
@@ -130,18 +128,21 @@ struct ProfileHeader: View {
         HStack(spacing: 10) {
             if let session = model.current {
                 AvatarView(url: session.avatarURL, name: session.displayName, size: 36)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(session.displayName).font(.headline).lineLimit(1)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(session.displayName).font(AFont.title).lineLimit(1)
                     HStack(spacing: 5) {
                         MessengerBadge(size: 11)
-                        Text("@\(session.slug)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                        Circle().fill(statusColor(model.engine.status)).frame(width: 7, height: 7)
-                        Text(model.engine.isSyncing ? "Syncing" : model.engine.status.shortLabel).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+                        Text("@\(session.slug)").font(AFont.meta).foregroundStyle(.secondary).lineLimit(1)
+                        Circle().fill(statusColor(model.engine.status)).frame(width: 6, height: 6)
+                        Text(model.engine.isSyncing ? "Syncing" : model.engine.status.shortLabel).font(AFont.meta).foregroundStyle(.tertiary).lineLimit(1)
                     }
                 }
             } else {
-                Image(systemName: "person.crop.circle").font(.system(size: 30)).foregroundStyle(.secondary)
-                Text("Not signed in").font(.headline).foregroundStyle(.secondary)
+                Image(systemName: "person.crop.circle").font(.system(size: 28)).foregroundStyle(.secondary).frame(width: 36, height: 36)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Not signed in").font(AFont.title).foregroundStyle(.secondary)
+                    Text(StorePaths.overrideIsInvalid ? "Store override is not a directory" : "Add an account to start").font(AFont.meta).foregroundStyle(.tertiary)
+                }
             }
             Spacer(minLength: 4)
             Menu {
@@ -169,7 +170,7 @@ struct ProfileHeader: View {
                 Divider()
                 Button("Settings…") { model.show(.settings) }
             } label: {
-                Image(systemName: "chevron.down.circle").font(.system(size: 15)).foregroundStyle(.secondary)
+                BarIcon("chevron.down.circle")
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
@@ -177,6 +178,8 @@ struct ProfileHeader: View {
             .help("Account")
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
+        .frame(maxWidth: .infinity)
+        .background(Color.primary.opacity(0.04))
     }
 
     private func statusColor(_ status: SyncEngine.Status) -> Color {
@@ -202,9 +205,9 @@ struct InboxBar: View {
     var body: some View {
         @Bindable var inbox = model.inbox
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Text(title(inbox.filter)).font(.subheadline.weight(.semibold)).lineLimit(1)
-                Spacer()
+            HStack(alignment: .center, spacing: 2) {
+                Text(title(inbox.filter)).font(AFont.title).lineLimit(1).frame(height: 22)
+                Spacer(minLength: 8)
                 Menu {
                     Picker("Filter", selection: $inbox.filter) {
                         ForEach(InboxModel.Filter.builtIn) { f in Label(f.title, systemImage: f.symbol).tag(f) }
@@ -216,12 +219,12 @@ struct InboxBar: View {
                     Divider()
                     Button("Mark All as Read") { inbox.markAllSeen() }.disabled(inbox.unreadCount == 0)
                 } label: {
-                    Image(systemName: inbox.filter == .all || inbox.filter.isLabel ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+                    BarIcon(inbox.filter == .all || inbox.filter.isLabel ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill")
                 }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
                 .help("Filter: \(inbox.filter.title)")
-                Button { creatingLabel = true } label: { Image(systemName: "tag.badge.plus" ) }
-                    .buttonStyle(.plain).foregroundStyle(.secondary)
+                Button { creatingLabel = true } label: { BarIcon("tag.badge.plus") }
+                    .buttonStyle(.plain)
                     .help("New label (an inbox of its own)")
                     .popover(isPresented: $creatingLabel, arrowEdge: .bottom) {
                         VStack(alignment: .leading, spacing: 8) {
@@ -234,7 +237,7 @@ struct InboxBar: View {
                         .onAppear { let used = Set(inbox.organizer.labels.map(\.icon)); newIcon = InboxLabel.icons.first { !used.contains($0) } ?? "tag" }
                     }
                 ConversationActions(convId: inbox.selectedConvId, asMenu: false)
-                Button { NotificationCenter.default.post(name: .allmanCompose, object: nil) } label: { Image(systemName: "square.and.pencil") }
+                Button { NotificationCenter.default.post(name: .allmanCompose, object: nil) } label: { BarIcon("square.and.pencil", prominent: true) }
                     .buttonStyle(.plain)
                     .help("New message (⌘N)")
                     .keyboardShortcut("n", modifiers: .command)
@@ -254,7 +257,7 @@ struct InboxBar: View {
                 }
             }
         }
-        .padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 6)
+        .padding(.horizontal, 12).padding(.bottom, 8)
     }
 
     private func chip(_ name: String, symbol: String, filter: InboxModel.Filter, count: Int) -> some View {
@@ -262,11 +265,11 @@ struct InboxBar: View {
         let on = inbox.filter == filter
         return Button { inbox.filter = on && filter != .all ? .all : filter } label: {
             HStack(spacing: 4) {
-                Image(systemName: symbol).font(.caption2.weight(.medium))
+                Image(systemName: symbol).font(AFont.chipIcon)
                 Text(name)
                 if count > 0 { Text("\(count)").foregroundStyle(on ? .primary : .secondary).monospacedDigit() }
             }
-            .font(.caption.weight(on ? .semibold : .regular))
+            .font(on ? AFont.chipStrong : AFont.chip)
             .padding(.horizontal, 8).padding(.vertical, 3)
             .background(on ? Color.accentColor.opacity(0.2) : Color.primary.opacity(0.06), in: Capsule())
             .foregroundStyle(on ? Color.accentColor : .primary)
@@ -326,7 +329,7 @@ struct ConversationActions: View {
                 if let url = snap.record.linkedInProfileURL { Button("Open LinkedIn Profile") { NSWorkspace.shared.open(url) } }
                 if let url = snap.record.linkedInThreadURL { Button("Open Thread on LinkedIn") { NSWorkspace.shared.open(url) } }
             } else {
-                HStack(spacing: 2) {
+                HStack(spacing: 0) {
                     icon(inbox.isPinned(id) ? "pin.fill" : "pin", help: inbox.isPinned(id) ? "Unpin (⇧⌘P)" : "Pin (⇧⌘P)") { inbox.togglePin(id) }
                         .disabled(!inbox.isPinned(id) && !inbox.canPinMore)
                     icon(inbox.organizer.labels(for: id).isEmpty ? "tag" : "tag.fill", help: "Labels (L)") { inbox.showLabelPicker = true }
@@ -339,19 +342,33 @@ struct ConversationActions: View {
                 }
             }
         } else if !asMenu {
-            HStack(spacing: 2) {
+            HStack(spacing: 0) {
                 ForEach(["pin", "tag", "clock", "note.text", "archivebox"], id: \.self) { icon($0, help: "Select a conversation") {}.disabled(true) }
             }
         }
     }
 
     private func icon(_ name: String, help: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: name).font(.system(size: 12)).frame(width: 20, height: 20)
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(.secondary)
-        .help(help)
+        Button(action: action) { BarIcon(name) }
+            .buttonStyle(.plain)
+            .help(help)
+    }
+}
+
+/// One size and weight for every icon in the inbox bar, so they line up.
+struct BarIcon: View {
+    let name: String
+    var prominent = false
+
+    init(_ name: String, prominent: Bool = false) { self.name = name; self.prominent = prominent }
+
+    var body: some View {
+        Image(systemName: name)
+            .font(AFont.icon)
+            .symbolRenderingMode(.monochrome)
+            .foregroundStyle(prominent ? Color.accentColor : Color.secondary)
+            .frame(width: 24, height: 22)
+            .contentShape(Rectangle())
     }
 }
 
@@ -360,15 +377,17 @@ struct ConversationActions: View {
 struct SearchField: View {
     @Binding var text: String
     var focused: FocusState<Bool>.Binding
+    var prompt = "Search people and messages"
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-            TextField("Search people and messages", text: $text)
+            Image(systemName: "magnifyingglass").font(AFont.icon).foregroundStyle(.secondary)
+            TextField(prompt, text: $text)
                 .textFieldStyle(.plain)
+                .font(AFont.body)
                 .focused(focused)
             if !text.isEmpty {
-                Button { text = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }.buttonStyle(.plain)
+                Button { text = "" } label: { Image(systemName: "xmark.circle.fill").font(AFont.icon).foregroundStyle(.secondary) }.buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 8).padding(.vertical, 5)
@@ -396,34 +415,34 @@ struct ConversationRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(r.displayName)
-                        .font(.body.weight(unread ? .semibold : .regular))
+                        .font(unread ? AFont.bodyStrong : AFont.body)
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                     Spacer(minLength: 6)
                     if let snooze {
                         Image(systemName: snooze.until <= Date() ? "bell.badge.fill" : (snooze.hidden ? "moon.zzz.fill" : "bell.fill"))
-                            .font(.caption2).foregroundStyle(.orange)
+                            .font(AFont.smallIcon).foregroundStyle(.orange)
                             .help((snooze.hidden ? "Snoozed until " : "Reminder ") + Fmt.reminderTime(snooze.until))
                     }
-                    if hasNote { Image(systemName: "note.text").font(.caption2).foregroundStyle(.secondary).help(org.note(r.convId)) }
+                    if hasNote { Image(systemName: "note.text").font(AFont.smallIcon).foregroundStyle(.secondary).help(org.note(r.convId)) }
                     Text(Fmt.listTime(snapshot.activityDate))
-                        .font(.caption)
+                        .font(AFont.meta)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }
                 HStack(alignment: .top, spacing: 6) {
                     if let m = snapshot.lastMessage {
                         Text((m.isFromMe ? "You: " : "") + m.previewText.replacingOccurrences(of: "\n", with: " "))
-                            .font(.callout)
+                            .font(AFont.secondary)
                             .foregroundStyle(unread ? .primary : .secondary)
                             .lineLimit(2)
                     } else if let h = r.headline {
-                        Text(h).font(.callout).foregroundStyle(.tertiary).lineLimit(2)
+                        Text(h).font(AFont.secondary).foregroundStyle(.tertiary).lineLimit(2)
                     }
                     Spacer(minLength: 0)
                     if unread {
                         Text("\(unreadCount)")
-                            .font(.caption2.weight(.bold)).monospacedDigit()
+                            .font(AFont.microStrong).monospacedDigit()
                             .foregroundStyle(.white)
                             .padding(.horizontal, unreadCount > 9 ? 6 : 0)
                             .frame(minWidth: 20, minHeight: 20)
@@ -434,7 +453,7 @@ struct ConversationRow: View {
                 if !labels.isEmpty {
                     HStack(spacing: 4) {
                         ForEach(labels.prefix(4)) { LabelChip(label: $0) }
-                        if labels.count > 4 { Text("+\(labels.count - 4)").font(.caption2).foregroundStyle(.secondary) }
+                        if labels.count > 4 { Text("+\(labels.count - 4)").font(AFont.micro).foregroundStyle(.secondary) }
                     }
                     .padding(.top, 2)
                 }
@@ -473,8 +492,8 @@ private struct RowActions: View {
     }
 
     private func btn(_ icon: String, _ help: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) { Image(systemName: icon).font(.system(size: 11)).frame(width: 20, height: 20) }
-            .buttonStyle(.plain).foregroundStyle(.secondary).help(help)
+        Button(action: action) { BarIcon(icon) }
+            .buttonStyle(.plain).help(help)
     }
 }
 
@@ -491,12 +510,12 @@ struct MessageHitRow: View {
             AvatarView(url: r.avatarURL, name: r.displayName, size: 32)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(r.displayName).font(.callout.weight(.medium)).lineLimit(1)
+                    Text(r.displayName).font(AFont.bodyMedium).lineLimit(1)
                     Spacer(minLength: 6)
-                    Text(Fmt.relative(hit.message.date)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                    Text(Fmt.relative(hit.message.date)).font(AFont.meta).foregroundStyle(.secondary).monospacedDigit()
                 }
                 Text(emphasized(hit.snippet(for: query)))
-                    .font(.callout).foregroundStyle(.secondary)
+                    .font(AFont.secondary).foregroundStyle(.secondary)
                     .lineLimit(3)
             }
         }
@@ -509,7 +528,7 @@ struct MessageHitRow: View {
         guard !q.isEmpty else { return out }
         var search = out.startIndex
         while search < out.endIndex, let r = out[search...].range(of: q, options: [.caseInsensitive, .diacriticInsensitive]) {
-            out[r].font = .callout.weight(.semibold)
+            out[r].font = AFont.secondaryStrong
             out[r].foregroundColor = .primary
             search = r.upperBound
         }
@@ -536,7 +555,7 @@ struct PinnedGrid: View {
                             .overlay(alignment: .topTrailing) {
                                 if unread > 0 {
                                     Text("\(unread)")
-                                        .font(.caption2.weight(.bold)).monospacedDigit()
+                                        .font(AFont.microStrong).monospacedDigit()
                                         .foregroundStyle(.white)
                                         .padding(.horizontal, unread > 9 ? 5 : 0)
                                         .frame(minWidth: 18, minHeight: 18)
@@ -546,8 +565,7 @@ struct PinnedGrid: View {
                                 }
                             }
                         Text(snap.record.firstName?.isEmpty == false ? snap.record.firstName! : snap.record.displayName)
-                            .font(.caption)
-                            .fontWeight(unread > 0 ? .semibold : .regular)
+                            .font(unread > 0 ? AFont.metaStrong : AFont.meta)
                             .lineLimit(1)
                             .foregroundStyle(.primary)
                     }

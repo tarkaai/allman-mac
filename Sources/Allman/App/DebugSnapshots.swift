@@ -241,11 +241,11 @@ enum DebugSnapshots {
             try? await Task.sleep(for: .seconds(2))
             capture(panel, to: out.appendingPathComponent("panel.png"))
 
-            model.openSettingsWindow?()
-            try? await Task.sleep(for: .seconds(2))
-            if let w = NSApp.windows.first(where: { $0.title.localizedCaseInsensitiveContains("settings") && $0.isVisible }) {
+            if let w = NSApp.windows.first(where: AppDelegate.isInbox) {
+                model.show(.settings)
+                try? await Task.sleep(for: .seconds(2))
                 capture(w, to: out.appendingPathComponent("settings.png"))
-                w.orderOut(nil)
+                model.show(.messenger)
             }
 
             // Attention state: what the panel looks like when the LinkedIn session is gone.

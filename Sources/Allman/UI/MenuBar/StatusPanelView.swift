@@ -219,10 +219,8 @@ struct StatusPanelView: View {
             Spacer()
             Button("Network…") { model.show(.network) }
                 .buttonStyle(.plain).font(.callout)
-            SettingsLink { Text("Settings…") }
+            Button("Settings…") { model.show(.settings) }
                 .buttonStyle(.plain).font(.callout)
-                .keyboardShortcut(",", modifiers: .command)
-                .simultaneousGesture(TapGesture().onEnded { model.closePanel?() })
             Button("Quit") { NSApp.terminate(nil) }
                 .buttonStyle(.plain).font(.callout)
                 .keyboardShortcut("q", modifiers: .command)

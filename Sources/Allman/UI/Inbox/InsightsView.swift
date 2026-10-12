@@ -2,22 +2,31 @@ import Charts
 import SwiftUI
 
 /// Inbox analytics: volume by week, reply rate and speed, who's waiting.
+/// Insights sidebar: what the numbers cover.
+struct InsightsSidebar: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        List(selection: .constant("overview")) {
+            Label("Overview", systemImage: "chart.bar.xaxis").tag("overview")
+            Section("Covers") {
+                Text("Every stored thread for @\(model.current?.slug ?? "—"): the last 7 and 30 days for volume, 90 days for reply speed, 12 weeks on the chart.")
+                    .font(AFont.meta).foregroundStyle(.secondary)
+                    .lineLimit(nil).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .listStyle(.sidebar)
+        .contentMargins(.top, 0, for: .scrollContent)
+    }
+}
+
 struct InsightsView: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
-    var inline = false
     @State private var insights: Insights?
 
     var body: some View {
         ScrollView {
         VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text("Insights").font(.title2.weight(.semibold))
-                if inline, let s = model.current { Text("· \(s.displayName)").font(.title3).foregroundStyle(.secondary) }
-                Spacer()
-                if !inline { Button("Done") { dismiss() }.keyboardShortcut(.cancelAction) }
-                Button { insights = nil; Task { await load() } } label: { Image(systemName: "arrow.clockwise") }.help("Recompute")
-            }
             if let ins = insights {
                 HStack(spacing: 10) {
                     tile("Sent · 7d", "\(ins.sent7)", "\(ins.sent30) in 30d")
@@ -47,7 +56,7 @@ struct InsightsView: View {
                     VStack(spacing: 2) {
                         ForEach(ins.topContacts) { c in
                             Button {
-                                if inline { model.experience = .messenger } else { dismiss() }
+                                model.experience = .messenger
                                 model.inbox.select(c.convId)
                             } label: {
                                 HStack {
@@ -66,8 +75,18 @@ struct InsightsView: View {
             }
         }
         .padding(18)
-        .frame(maxWidth: 720)
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: 760, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .navigationTitle("")
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                PageHeader(symbol: "chart.bar.xaxis", title: "Insights", line1: model.current.map { "\($0.displayName) · @\($0.slug)" }, line2: insights.map { "\($0.totalThreads.formatted()) threads · \($0.totalMessages.formatted()) messages" })
+            }
+            .sharedBackgroundVisibility(.hidden)
+            ToolbarItem(placement: .primaryAction) {
+                Button { insights = nil; Task { await load() } } label: { Label("Recompute", systemImage: "arrow.clockwise") }.help("Recompute")
+            }
         }
         .task(id: model.currentId) { await load() }
     }

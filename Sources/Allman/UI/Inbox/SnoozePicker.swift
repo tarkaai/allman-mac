@@ -95,8 +95,8 @@ struct ReminderBanner: View {
                 Button("Change…") { inbox.showSnoozePicker = true }.controlSize(.small)
             }
             .padding(.horizontal, 12).padding(.vertical, 8)
-            .background(Color.orange.opacity(0.12))
-            .overlay(alignment: .bottom) { Divider() }
+            .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .padding(.horizontal, 12).padding(.bottom, 6)
         }
     }
 }

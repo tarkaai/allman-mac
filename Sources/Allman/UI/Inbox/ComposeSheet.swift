@@ -269,11 +269,10 @@ struct DraftThreadView: View {
             .frame(maxHeight: .infinity)
             ComposerView(convId: recipient.convId, firstName: recipient.name.split(separator: " ").first.map(String.init) ?? recipient.name)
         }
-        .navigationTitle(recipient.name)
-        .navigationSubtitle(recipient.headline ?? "linkedin.com/in/\(recipient.slug)")
+        .navigationTitle("")
         .toolbar {
             ToolbarItem(placement: .navigation) {
-                AvatarView(url: recipient.avatarURL, name: recipient.name, size: 26).padding(.trailing, 2)
+                PageHeader(avatarURL: recipient.avatarURL, title: recipient.name, titleAccessory: AnyView(MessengerBadge(size: 13)), line1: recipient.headline, line2: "linkedin.com/in/\(recipient.slug)", line2Symbol: "link")
             }
             .sharedBackgroundVisibility(.hidden)
             ToolbarItem(placement: .primaryAction) {

@@ -21,17 +21,19 @@ the local-first LinkedIn messenger CLI. Two jobs:
 
 ## Layout
 
-One window, four experiences, switched from the segmented control at the left of the
-toolbar (or `⌘1`–`⌘4`): **Messenger**, **Network**, **Insights**, **Settings**.
+One window, four experiences (`⌘1`–`⌘4`): **Messenger**, **Network**, **Insights**,
+**Settings**. Every experience has the same shape: the sidebar carries the switcher at the
+top, that experience's navigation in the middle, and the signed-in account at the bottom
+(the chevron collapses account actions: switch, sync, sync older history, add, sign out,
+settings); the page's header sits on the toolbar row, left-aligned, with the page's actions
+on the right. There is no separate Settings window.
 
-The messenger sidebar, top to bottom: who is signed in (the chevron collapses account
-actions: switch, sync, sync older history, add, sign out, settings); the inbox bar —
-every label is an inbox, shown as icon chips with *All* and *Unread*, plus the filter
-menu, new label, the selected thread's actions and New Message; search; pins for the
-current inbox; the list. Hovering a row reveals pin / labels / snooze / note / archive.
-The thread header is about the person: name with the messenger's mark (LinkedIn today —
-Allman is built for more than one), their brief and their location on separate rows;
-the `i` at the top right opens the contact details inspector.
+The messenger sidebar: the inbox bar — every label is an inbox, shown as icon chips with
+*All* and *Unread*, plus the filter menu, new label, the selected thread's actions and New
+Message; search; pins for the current inbox; the list. Hovering a row reveals pin /
+labels / snooze / note / archive. The thread header is about the person: name with the
+messenger's mark (LinkedIn today — Allman is built for more than one), their brief and
+their location on separate rows; the `i` at the right opens the contact details inspector.
 
 ## Inbox organization
 

@@ -12,10 +12,23 @@ enum StorePaths {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".allman", isDirectory: true)
     }
 
+    /// The Settings override, only when it names an existing directory (a stray
+    /// keystroke in that field must not point the app at an empty store).
+    static var validOverride: URL? {
+        guard let custom = UserDefaults.standard.string(forKey: storeOverrideKey), !custom.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        let path = (custom.trimmingCharacters(in: .whitespaces) as NSString).expandingTildeInPath
+        var isDir: ObjCBool = false
+        guard path.hasPrefix("/"), FileManager.default.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue else { return nil }
+        return URL(fileURLWithPath: path, isDirectory: true)
+    }
+
+    static var overrideIsInvalid: Bool {
+        guard let custom = UserDefaults.standard.string(forKey: storeOverrideKey), !custom.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
+        return validOverride == nil
+    }
+
     static var storeURL: URL {
-        if let custom = UserDefaults.standard.string(forKey: storeOverrideKey), !custom.isEmpty {
-            return URL(fileURLWithPath: (custom as NSString).expandingTildeInPath, isDirectory: true)
-        }
+        if let custom = validOverride { return custom }
         if let env = ProcessInfo.processInfo.environment["ALLMAN_STORE"], !env.isEmpty {
             return URL(fileURLWithPath: env, isDirectory: true)
         }

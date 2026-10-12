@@ -10,7 +10,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let model = AppModel.shared
             statusItem = StatusItemController(model: model)
             model.openInboxWindow = { Self.openInboxScene() }
-            model.openSettingsWindow = { Self.openSettingsScene() }
             DebugSnapshots.runIfRequested()
         }
         Task { @MainActor in await AppModel.shared.bootstrap() }
@@ -62,20 +61,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         NSWorkspace.shared.open(URL(string: "allman://inbox")!)
-    }
-
-    /// SwiftUI's Settings scene is opened by the app menu's own item (macOS 14+ selector).
-    @MainActor static func openSettingsScene() {
-        NSApp.activate(ignoringOtherApps: true)
-        let selectors = ["showSettingsWindow:", "showPreferencesWindow:"].map { Selector($0) }
-        if let appMenu = NSApp.mainMenu?.items.first?.submenu,
-           let item = appMenu.items.first(where: { $0.action.map(selectors.contains) == true || $0.title.hasPrefix("Settings") }),
-           let action = item.action {
-            NSApp.sendAction(action, to: item.target, from: item)
-            return
-        }
-        for sel in selectors where NSApp.sendAction(sel, to: nil, from: nil) { return }
-        NSLog("settings: no handler found")
     }
 
     static func isInbox(_ w: NSWindow) -> Bool {

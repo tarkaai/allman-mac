@@ -1,11 +1,58 @@
 import AppKit
 import SwiftUI
 
-/// Your 1st-degree network as stored by the CLI, with the CLI's network jobs.
-struct NetworkView: View {
+/// Network sidebar: sections, search, and what the jobs are doing.
+struct NetworkSidebar: View {
     @Environment(AppModel.self) private var model
-    @State private var query = ""
-    @State private var tab: Tab = .connections
+    @FocusState private var searchFocused: Bool
+
+    var body: some View {
+        @Bindable var net = model.network
+        let inbox = model.inbox
+        VStack(spacing: 0) {
+            SearchField(text: $net.query, focused: $searchFocused, prompt: "Name, title, company, location")
+                .padding(.horizontal, 12).padding(.bottom, 6)
+            List(selection: $net.tab) {
+                Label {
+                    HStack { Text("Connections"); Spacer(); Text(inbox.connections.count.formatted()).foregroundStyle(.secondary).monospacedDigit() }
+                } icon: { Image(systemName: "person.2") }
+                .tag(NetworkModel.Tab.connections)
+                Label {
+                    HStack { Text("Invitations sent"); Spacer(); Text("\(net.invitations.count)").foregroundStyle(.secondary).monospacedDigit() }
+                } icon: { Image(systemName: "person.badge.plus") }
+                .tag(NetworkModel.Tab.invitations)
+                Section("Profile details") {
+                    let enriched = inbox.connections.filter(\.isEnriched).count
+                    LabeledContent("Enriched", value: enriched.formatted())
+                    LabeledContent("Missing", value: (inbox.connections.count - enriched).formatted())
+                }
+                .font(AFont.body)
+            }
+            .listStyle(.sidebar)
+            .contentMargins(.top, 0, for: .scrollContent)
+            if let job = net.job {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("\(job.kind.rawValue) · \(job.progress)").font(AFont.meta).lineLimit(2)
+                    Spacer()
+                    Button("Stop") { net.cancel() }.controlSize(.mini)
+                }
+                .padding(.horizontal, 12).padding(.vertical, 8)
+            } else if let err = net.lastError {
+                Label(err, systemImage: "exclamationmark.triangle.fill").font(AFont.meta).foregroundStyle(.orange).lineLimit(3).padding(.horizontal, 12).padding(.vertical, 8)
+            } else if let r = net.lastResult {
+                Label(r, systemImage: "checkmark.circle.fill").font(AFont.meta).foregroundStyle(.green).lineLimit(2).padding(.horizontal, 12).padding(.vertical, 8)
+            } else if AllmanBinary.resolve()?.lastPathComponent == "fake-allman.sh" {
+                Label("Fake CLI (harness): network jobs are simulated.", systemImage: "testtube.2").font(AFont.meta).foregroundStyle(.orange).padding(.horizontal, 12).padding(.vertical, 8)
+            }
+        }
+        .onAppear { inbox.loadConnectionsIfNeeded() }
+    }
+}
+
+/// Your 1st-degree network as stored by the CLI, with the CLI's network jobs.
+struct NetworkDetail: View {
+    @Environment(AppModel.self) private var model
     @State private var selection: Set<String> = []
     @State private var sortOrder = [KeyPathComparator(\Connection.name)]
     @State private var connecting = false
@@ -13,31 +60,21 @@ struct NetworkView: View {
     @State private var enrichDeep = false
     @State private var confirmPull = false
 
-    enum Tab: String, CaseIterable { case connections = "Connections", invitations = "Invitations sent" }
-
     var body: some View {
         let inbox = model.inbox
         let net = model.network
-        VStack(spacing: 0) {
-            Picker("", selection: $tab) {
-                ForEach(Tab.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented).labelsHidden()
-            .frame(width: 320)
-            .padding(.vertical, 8)
-            Divider()
-            switch tab {
+        Group {
+            switch net.tab {
             case .connections: connectionsTable(inbox)
             case .invitations: invitationsTable(net)
             }
-            Divider()
-            statusBar(net, inbox)
         }
-        .frame(minWidth: 760, minHeight: 440)
-        .searchable(text: $query, placement: .toolbar, prompt: "Name, title, company, location")
-        .navigationTitle("Network")
-        .navigationSubtitle(subtitle(inbox))
+        .navigationTitle("")
         .toolbar {
+            ToolbarItem(placement: .navigation) {
+                PageHeader(symbol: net.tab == .connections ? "person.2" : "person.badge.plus", title: net.tab.rawValue, line1: subtitle(inbox, net), line2: net.query.isEmpty ? nil : "\(filtered.count.formatted()) match “\(net.query)”")
+            }
+            .sharedBackgroundVisibility(.hidden)
             ToolbarItemGroup(placement: .primaryAction) {
                 Button { confirmPull = true } label: { Label("Pull Connections", systemImage: "arrow.down.circle") }
                     .disabled(net.isBusy)
@@ -65,10 +102,10 @@ struct NetworkView: View {
         } message: {
             Text("Walks your 1st-degree list 100 at a time with a short pause between pages. Existing records are updated in place.")
         }
-        .onAppear { inbox.loadConnectionsIfNeeded() }
     }
 
-    private func subtitle(_ inbox: InboxModel) -> String {
+    private func subtitle(_ inbox: InboxModel, _ net: NetworkModel) -> String {
+        if net.tab == .invitations { return "Connection requests recorded by allman connect" }
         let all = inbox.connections
         guard !all.isEmpty else { return "No connections stored yet" }
         let enriched = all.filter(\.isEnriched).count
@@ -76,13 +113,16 @@ struct NetworkView: View {
     }
 
     private var filtered: [Connection] {
-        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        let q = model.network.query.trimmingCharacters(in: .whitespaces)
         let all = model.inbox.connections
-        let rows = q.isEmpty ? all : all.filter {
-            $0.name.lowercased().contains(q) || ($0.title?.lowercased().contains(q) ?? false) || ($0.company?.lowercased().contains(q) ?? false)
-                || ($0.location?.lowercased().contains(q) ?? false) || ($0.slug?.lowercased().contains(q) ?? false) || ($0.headline?.lowercased().contains(q) ?? false)
+        guard !q.isEmpty else { return all.sorted(using: sortOrder) }
+        var scores: [String: Int] = [:]
+        let rows = all.filter { c in
+            let sc = SearchRank.score(name: c.name, secondary: [c.title, c.company, c.slug], tertiary: [c.location, c.headline], query: q)
+            if sc > 0 { scores[c.id] = sc }
+            return sc > 0
         }
-        return rows.sorted(using: sortOrder)
+        return rows.sorted { (scores[$0.id] ?? 0, $0.name) > (scores[$1.id] ?? 0, $1.name) }
     }
 
     @ViewBuilder
@@ -101,24 +141,27 @@ struct NetworkView: View {
                 TableColumn("Name", value: \.name) { c in
                     HStack(spacing: 8) {
                         AvatarView(url: c.profilePictureUrl.flatMap(URL.init(string:)), name: c.name, size: 22)
-                        Text(c.name)
+                        Text(c.name).lineLimit(1)
                         if let slug = c.slug, inbox.snapshots.contains(where: { $0.record.slug == slug }) {
                             Image(systemName: "bubble.left.fill").font(.caption2).foregroundStyle(.secondary).help("You have a thread")
                         }
                     }
                 }
-                .width(min: 180, ideal: 220)
+                .width(min: 140, ideal: 200)
                 TableColumn("Title", value: \.title.orEmpty) { c in Text(c.title ?? c.headline ?? "").foregroundStyle(c.title == nil ? .secondary : .primary).lineLimit(1) }
+                    .width(min: 80)
                 TableColumn("Company", value: \.company.orEmpty) { Text($0.company ?? "").lineLimit(1) }
+                    .width(min: 80)
                 TableColumn("Location", value: \.location.orEmpty) { Text($0.location.map(Connection.shortLocation) ?? "").lineLimit(1) }
-                TableColumn("Connected", value: \.connectedAt.orDistantPast) { c in Text(c.connectedAt.map(Fmt.monthDayYear) ?? "").foregroundStyle(.secondary) }
-                    .width(100)
-                TableColumn("Details", value: \.enrichedAt.orDistantPast) { c in
+                    .width(min: 80)
+                TableColumn("Connected", value: \.connectedAt.orDistantPast) { c in Text(c.connectedAt.map(Fmt.monthDayYear) ?? "").foregroundStyle(.secondary).lineLimit(1) }
+                    .width(min: 84, ideal: 96, max: 110)
+                TableColumn("", value: \.enrichedAt.orDistantPast) { c in
                     Image(systemName: c.isEnriched ? "checkmark.circle.fill" : "circle.dotted")
                         .foregroundStyle(c.isEnriched ? Color.green : Color.secondary)
                         .help(c.isEnriched ? "Enriched \(c.enrichedAt.map(Fmt.monthDayYear) ?? "") (\(c.enrichDepth ?? "core"))" : "Not enriched")
                 }
-                .width(60)
+                .width(28)
             }
             .contextMenu(forSelectionType: String.self) { ids in
                 let picked = ids.compactMap { id in inbox.connections.first { $0.id == id } }
@@ -147,6 +190,7 @@ struct NetworkView: View {
         } else {
             model.inbox.startDraft(DraftRecipient(slug: slug, name: c.name, headline: c.subtitle, avatarURL: c.profilePictureUrl.flatMap(URL.init(string:))))
             model.openInbox(convId: nil)
+            model.experience = .messenger
         }
     }
 
@@ -157,7 +201,7 @@ struct NetworkView: View {
         } else {
             Table(net.invitations) {
                 TableColumn("Person") { inv in Text(inv.slug.map { "@\($0)" } ?? inv.inviteeId) }
-                TableColumn("Sent") { inv in Text(inv.sentAt.map(Fmt.monthDayYear) ?? "").foregroundStyle(.secondary) }.width(110)
+                TableColumn("Sent") { inv in Text(inv.sentAt.map(Fmt.monthDayYear) ?? "").foregroundStyle(.secondary) }.width(min: 90, max: 120)
                 TableColumn("Note") { inv in Text(inv.note ?? "—").foregroundStyle(inv.note == nil ? .tertiary : .primary).lineLimit(1) }
             }
             .contextMenu(forSelectionType: String.self) { ids in
@@ -166,28 +210,6 @@ struct NetworkView: View {
                 }
             }
         }
-    }
-
-    private func statusBar(_ net: NetworkModel, _ inbox: InboxModel) -> some View {
-        HStack(spacing: 10) {
-            if let job = net.job {
-                ProgressView().controlSize(.small)
-                Text("\(job.kind.rawValue) · \(job.progress)").font(.callout)
-                Button("Stop") { net.cancel() }.controlSize(.small)
-            } else if let err = net.lastError {
-                Label(err, systemImage: "exclamationmark.triangle.fill").font(.callout).foregroundStyle(.orange).lineLimit(2)
-            } else if let r = net.lastResult {
-                Label(r, systemImage: "checkmark.circle.fill").font(.callout).foregroundStyle(.green)
-            } else if AllmanBinary.resolve()?.lastPathComponent == "fake-allman.sh" {
-                Label("Running against the fake CLI (harness) — network jobs are simulated.", systemImage: "testtube.2").font(.caption).foregroundStyle(.orange)
-            } else {
-                Text("Everything here is the CLI's store: allman connections / enrich / connect write it, and git keeps the history.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer()
-            if !query.isEmpty { Text("\(filtered.count.formatted()) match").font(.caption).foregroundStyle(.secondary).monospacedDigit() }
-        }
-        .padding(.horizontal, 12).padding(.vertical, 7)
     }
 }
 

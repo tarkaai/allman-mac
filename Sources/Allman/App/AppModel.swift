@@ -39,7 +39,6 @@ final class AppModel {
 
     /// Set by the AppKit controllers so model code can open windows.
     var openInboxWindow: (() -> Void)?
-    var openSettingsWindow: (() -> Void)?
     var closePanel: (() -> Void)?
     /// Dev snapshots only: show every bubble's timestamp as if hovered.
     var debugShowTimes = false
@@ -58,6 +57,7 @@ final class AppModel {
         }
     }
     var experience: Experience = .messenger
+    var settingsSection: SettingsSection = .accounts
 
     /// The contact inspector beside the thread (⌥⌘I). Remembered across launches.
     static let inspectorKey = "inspectorVisible"
@@ -319,10 +319,7 @@ final class AppModel {
         openInboxWindow?()
     }
 
-    func openSettings() {
-        closePanel?()
-        openSettingsWindow?()
-    }
+    func openSettings() { show(.settings) }
 
     // MARK: Export
 

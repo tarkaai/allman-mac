@@ -45,6 +45,11 @@ final class NetworkModel {
         var count = 0
     }
 
+    enum Tab: String, CaseIterable, Identifiable { case connections = "Connections", invitations = "Invitations sent"; var id: String { rawValue } }
+    /// Sidebar selection and search for the Network page.
+    var tab: Tab = .connections
+    var query = ""
+
     private(set) var job: Job?
     private(set) var lastResult: String?
     private(set) var lastError: String?

@@ -9,11 +9,11 @@ struct LabelChip: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            Image(systemName: label.icon).font(.caption2.weight(.medium))
+            Image(systemName: label.icon).font(AFont.chipIcon)
             if !compact { Text(label.name).lineLimit(1) }
             if let count, count > 0 { Text("\(count)").foregroundStyle(selected ? .primary : .secondary).monospacedDigit() }
         }
-        .font(.caption.weight(selected ? .semibold : .regular))
+        .font(selected ? AFont.chipStrong : AFont.chip)
         .padding(.horizontal, compact ? 5 : 8).padding(.vertical, 3)
         .background(selected ? Color.accentColor.opacity(0.2) : Color.primary.opacity(0.06), in: Capsule())
         .foregroundStyle(selected ? Color.accentColor : .primary)

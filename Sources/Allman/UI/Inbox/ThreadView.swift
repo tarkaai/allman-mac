@@ -44,9 +44,7 @@ struct ThreadView: View {
         let outgoing = inbox.outgoingMessages(convId)
         let rows = rows(for: messages, outgoing: outgoing)
         VStack(spacing: 0) {
-            PersonHeader(snapshot: snapshot)
-            Divider()
-            ReminderBanner(convId: convId)
+            ReminderBanner(convId: convId).padding(.top, 6)
             GeometryReader { geo in
             let maxBubble = max(260, (geo.size.width - 32) * 0.6)
             ScrollViewReader { proxy in
@@ -152,6 +150,8 @@ struct ThreadView: View {
         }
         .navigationTitle("")
         .toolbar {
+            ToolbarItem(placement: .navigation) { PersonHeader(snapshot: snapshot) }
+                .sharedBackgroundVisibility(.hidden)
             ToolbarItem(placement: .primaryAction) {
                 Button { model.inspectorVisible.toggle() } label: { Label("Contact Details", systemImage: model.inspectorVisible ? "info.circle.fill" : "info.circle") }
                     .help(model.inspectorVisible ? "Hide contact details (⌥⌘I)" : "Show contact details (⌥⌘I)")
@@ -230,7 +230,7 @@ struct ThreadView: View {
 }
 
 /// Who you're talking to, on which messenger: name with the LinkedIn mark,
-/// their brief (enriched role or headline) and their location on separate rows.
+/// their brief (enriched role or headline) and their location, on the toolbar row.
 struct PersonHeader: View {
     @Environment(AppModel.self) private var model
     let snapshot: ConversationSnapshot
@@ -239,23 +239,18 @@ struct PersonHeader: View {
         let r = snapshot.record
         let conn = model.inbox.connection(for: r)
         let brief = conn.map { [$0.title, $0.company].compactMap { $0 }.joined(separator: " at ") }.flatMap { $0.isEmpty ? nil : $0 } ?? r.headline
-        let location = conn?.location
-        HStack(alignment: .center, spacing: 12) {
-            AvatarView(url: r.avatarURL ?? conn?.profilePictureUrl.flatMap(URL.init(string:)), name: r.displayName, size: 44)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(r.displayName).font(.headline).lineLimit(1)
-                    MessengerBadge()
-                    if let d = degree(r.distance) { Text(d).font(.caption2.weight(.medium)).padding(.horizontal, 5).padding(.vertical, 1).background(.quaternary, in: Capsule()) }
-                }
-                if let brief, !brief.isEmpty { Text(brief).font(.callout).foregroundStyle(.secondary).lineLimit(1) }
-                if let location, !location.isEmpty { Label(location, systemImage: "mappin.and.ellipse").font(.caption).foregroundStyle(.tertiary).lineLimit(1) }
-            }
-            Spacer()
-        }
-        .padding(.horizontal, 16).padding(.vertical, 8)
-        .contentShape(Rectangle())
-        .onTapGesture { model.inspectorVisible.toggle() }
+        PageHeader(
+            avatarURL: r.avatarURL ?? conn?.profilePictureUrl.flatMap(URL.init(string:)),
+            title: r.displayName,
+            titleAccessory: AnyView(HStack(spacing: 5) {
+                MessengerBadge(size: 13)
+                if let d = degree(r.distance) { Text(d).font(.caption2.weight(.medium)).padding(.horizontal, 5).padding(.vertical, 1).background(.quaternary, in: Capsule()) }
+            }),
+            line1: brief,
+            line2: conn?.location,
+            line2Symbol: "mappin.and.ellipse",
+            onTap: { model.inspectorVisible.toggle() }
+        )
         .help("Contact details (⌥⌘I)")
     }
 

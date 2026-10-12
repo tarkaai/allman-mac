@@ -12,30 +12,35 @@ struct ContactInspector: View {
         let inbox = model.inbox
         let r = snapshot.record
         let conn = inbox.connection(for: r)
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                header(r, conn)
-                organize(r.convId)
-                if let conn, conn.isEnriched {
-                    enrichedDetails(conn)
-                } else {
-                    notEnriched(r, conn)
+        VStack(spacing: 0) {
+            // Fixed on the toolbar line, glass behind it: picture, name, pronouns, degree, verified, close (i).
+            headerRow(r, conn)
+                .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.bar)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    about(r, conn)
+                    organize(r.convId)
+                    if let conn, conn.isEnriched {
+                        enrichedDetails(conn)
+                    } else {
+                        notEnriched(r, conn)
+                    }
+                    links(r)
                 }
-                links(r)
+                .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 16)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 16)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentMargins(.top, 0, for: .scrollContent)
+            .scrollEdgeEffectStyle(.soft, for: .top)
         }
-        // The header row sits on the toolbar line, with its own close (i) at the trailing end.
         .ignoresSafeArea(.container, edges: .top)
-        .contentMargins(.top, 0, for: .scrollContent)
-        .scrollEdgeEffectStyle(.soft, for: .top)
     }
 
     // MARK: Sections
 
-    private func header(_ r: ConversationRecord, _ conn: Connection?) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+    private func headerRow(_ r: ConversationRecord, _ conn: Connection?) -> some View {
             HStack(alignment: .center, spacing: 10) {
                 AvatarView(url: r.avatarURL ?? conn?.profilePictureUrl.flatMap(URL.init(string:)), name: r.displayName, size: 36)
                 VStack(alignment: .leading, spacing: 2) {
@@ -53,6 +58,10 @@ struct ContactInspector: View {
                     .help("Hide contact details (⌥⌘I)")
             }
             .frame(height: 36)
+    }
+
+    private func about(_ r: ConversationRecord, _ conn: Connection?) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
             if let h = r.headline ?? conn?.headline, !h.isEmpty {
                 Text(h).font(AFont.secondary).foregroundStyle(.secondary).lineLimit(4).textSelection(.enabled)
             }

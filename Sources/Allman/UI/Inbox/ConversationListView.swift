@@ -37,6 +37,7 @@ struct ConversationListView: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
+                    ScrollViewReader { proxy in
                     List(selection: $inbox.sidebarSelection) {
                         if showPins {
                             PinnedGrid(pins: pins)
@@ -78,6 +79,21 @@ struct ConversationListView: View {
                         guard press.modifiers.isDisjoint(with: [.command, .control, .option]) else { return .ignored }
                         return handleKey(press.characters) ? .handled : .ignored
                     }
+                    // Keyboard moves (⌘↑/↓, j/k, next unread) keep the selected row on screen.
+                    .onChange(of: inbox.selectedConvId) { old, id in
+                        guard let id, let to = inbox.filtered.firstIndex(where: { $0.record.convId == id }) else { return }
+                        // Anchor by direction: the row lands fully on screen with the least movement.
+                        let from = old.flatMap { o in inbox.filtered.firstIndex { $0.record.convId == o } }
+                        let anchor: UnitPoint = (from.map { to >= $0 } ?? true) ? .bottom : .top
+                        withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(id, anchor: anchor) }
+                        // Rows below the fold are only estimated until laid out; a second pass lands exactly.
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(220))
+                            guard inbox.selectedConvId == id else { return }
+                            proxy.scrollTo(id, anchor: anchor)
+                        }
+                    }
+                    }
                 }
             }
         }
@@ -98,6 +114,7 @@ struct ConversationListView: View {
         let id = snap.record.convId
         return ConversationRow(snapshot: snap, unreadCount: inbox.unreadCount(snap))
             .tag(id)
+            .id(id)
             .contextMenu { ConversationActions(convId: id, asMenu: true) }
             // Trackpad gestures, Mail-style: swipe right to read/pin, left to archive/snooze/label.
             .swipeActions(edge: .leading, allowsFullSwipe: true) {

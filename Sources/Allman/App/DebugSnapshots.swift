@@ -145,6 +145,16 @@ enum DebugSnapshots {
                     try? await Task.sleep(for: .milliseconds(400))
                     for s in model.snippets.snippets where !originalSnippets.contains(s) { model.snippets.remove(s.id) }
                 }
+                // Keyboard navigation (ALLMAN_SNAPSHOT_NAV=1): 18 steps down — the list must follow the selection.
+                if ProcessInfo.processInfo.environment["ALLMAN_SNAPSHOT_NAV"] != nil {
+                    model.inbox.requestFocus(.list)
+                    for _ in 0..<18 { model.inbox.selectNext(); try? await Task.sleep(for: .milliseconds(60)) }
+                    try? await Task.sleep(for: .seconds(1.2))
+                    capture(w, to: out.appendingPathComponent("nav-down.png"))
+                    for _ in 0..<6 { model.inbox.selectPrevious(); try? await Task.sleep(for: .milliseconds(60)) }
+                    try? await Task.sleep(for: .seconds(1))
+                    capture(w, to: out.appendingPathComponent("nav-up.png"))
+                }
                 let hadInspector = model.inspectorVisible
                 if model.inbox.selectedConvId == nil, let conv = target?.record.convId { model.inbox.select(conv) }
                 model.inspectorVisible = true

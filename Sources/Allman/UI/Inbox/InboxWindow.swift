@@ -174,6 +174,36 @@ struct MessengerDetail: View {
                 .inspectorColumnWidth(min: 250, ideal: 300, max: 400)
             }
             .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
+            .navigationTitle("")
+            // Declared once here (not per thread) so the items keep their place while
+            // arrowing through the list; the header hides while the inspector shows it.
+            .toolbar {
+                ToolbarItem(placement: .navigation) { detailHeader }
+                    .sharedBackgroundVisibility(.hidden)
+                ToolbarItem(placement: .primaryAction) { detailAction }
+            }
+    }
+
+    @ViewBuilder
+    private var detailHeader: some View {
+        let inbox = model.inbox
+        if let draft = inbox.draft {
+            PageHeader(avatarURL: draft.avatarURL, title: draft.name, titleAccessory: AnyView(MessengerBadge(size: 13)), line1: draft.headline ?? "linkedin.com/in/\(draft.slug)")
+        } else if let snap = inbox.selected, !model.inspectorVisible {
+            PersonHeader(snapshot: snap)
+        }
+    }
+
+    @ViewBuilder
+    private var detailAction: some View {
+        let inbox = model.inbox
+        if inbox.draft != nil {
+            Button { inbox.draft = nil } label: { Label("Discard draft", systemImage: "xmark") }
+                .help("Discard this draft")
+        } else if inbox.selected != nil, !model.inspectorVisible {
+            Button { model.toggleInspector() } label: { Label("Contact Details", systemImage: "info.circle") }
+                .help("Show contact details (⌥⌘I)")
+        }
     }
 
     @ViewBuilder

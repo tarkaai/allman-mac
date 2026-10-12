@@ -270,14 +270,5 @@ struct DraftThreadView: View {
             ComposerView(convId: recipient.convId, firstName: recipient.name.split(separator: " ").first.map(String.init) ?? recipient.name, autoFocus: true)
         }
         .navigationTitle("")
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                PageHeader(avatarURL: recipient.avatarURL, title: recipient.name, titleAccessory: AnyView(MessengerBadge(size: 13)), line1: recipient.headline, line2: "linkedin.com/in/\(recipient.slug)", line2Symbol: "link")
-            }
-            .sharedBackgroundVisibility(.hidden)
-            ToolbarItem(placement: .primaryAction) {
-                Button { model.inbox.draft = nil } label: { Label("Discard draft", systemImage: "xmark") }
-            }
-        }
     }
 }

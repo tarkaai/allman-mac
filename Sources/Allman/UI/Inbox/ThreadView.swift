@@ -156,11 +156,6 @@ struct ThreadView: View {
             ComposerView(convId: convId, firstName: snapshot.record.firstName ?? snapshot.record.displayName)
         }
         .navigationTitle("")
-        .toolbar {
-            ToolbarItem(placement: .navigation) { PersonHeader(snapshot: snapshot) }
-                .sharedBackgroundVisibility(.hidden)
-            ToolbarItem(placement: .primaryAction) { inspectorToggle }
-        }
     }
 
     /// Scrolls after the new row has been laid out, so the offset change itself
@@ -176,15 +171,6 @@ struct ThreadView: View {
                 try? await Task.sleep(for: .milliseconds(ms))
                 withAnimation(animation) { proxy.scrollTo("bottom", anchor: .bottom) }
             }
-        }
-    }
-
-    /// Shown only while the inspector is closed; the open inspector carries its own close button.
-    @ViewBuilder
-    private var inspectorToggle: some View {
-        if !model.inspectorVisible {
-            Button { model.toggleInspector() } label: { Label("Contact Details", systemImage: "info.circle") }
-                .help("Show contact details (⌥⌘I)")
         }
     }
 

@@ -37,6 +37,13 @@ if "ConversationActions(convId: inbox.selectedConvId, asMenu: false)" in bar: ba
 print("\n".join(bad)); sys.exit(1 if bad else 0)
 PY
 ok "R26/R21 rows without badge; actions on the top band"
+python3 -I - $ui/Inbox/ConversationListView.swift <<'PY' || bad "R29 hover actions must be labels · snooze · archive only"
+import sys
+s=open(sys.argv[1]).read()
+b=s[s.index("struct RowActions"):s.index("struct ", s.index("struct RowActions")+10)]
+sys.exit(1 if ('"pin"' in b or 'note.text' in b) else 0)
+PY
+ok "R29 hover actions: labels · snooze · archive"
 command grep -q "struct ThreadActions" $ui/Inbox/InboxWindow.swift && ok "R21 ThreadActions on the band" || bad "R21 ThreadActions missing"
 # R15b: the selected conversation is highlighted edge to edge (plain list style, not the inset sidebar style).
 command grep -q "listStyle(.plain)" $ui/Inbox/ConversationListView.swift && ! command grep -q "listStyle(.sidebar)" $ui/Inbox/ConversationListView.swift && ok "R15b full-width selection (plain list)" || bad "R15b conversation list must use .plain"

@@ -15,8 +15,8 @@ Screenshots of every checked state are written next to the test's result JSON.
 | R3 | Pins belong to the inbox on screen and never also appear in the list. Clicking a pin selects it without the list showing it too. | mock |
 | R4 | The chrome bar (our own sidebar toggle at the **far left**, then the Messenger · Network · Insights · Settings switcher) is fixed at the top-left of the window. Collapsing the sidebar changes only the toggle's look — nothing moves, nothing is duplicated; the page header shifts right to clear it. No system toolbar at all. | mock + lint |
 | R5 | Exactly **one** contact-panel control: the `i`, far right of the window, same glyph open or closed, never moves (it is the window's, not a column's), and clicking it toggles the panel. The panel is a column inside the detail (never `.inspector`, which squeezes the split view mid-animation and makes the sidebar jump). The app draws its own chrome: hidden title bar, no `.toolbar` items anywhere (they re-flow, overflow and wash content in the band). | mock + lint |
-| R6 | Thread header on the toolbar row, left-aligned: picture, name + messenger mark + degree, the brief on one line, **no location**. Hidden while the panel is open. | mock |
-| R7 | Panel header on the top band above the panel (picture, name, pronouns, degree, Premium, verified) with the `i` beside it; it stays put while the panel body scrolls under it. | mock |
+| R6 | Thread header on the top band, left-aligned: picture, name + messenger mark + degree, the brief on one line, **no location**. It never moves and never hides — not when the panel opens, not when the sidebar collapses. | mock |
+| R7 | The contact panel has **no header of its own**; its body starts under the band (the thread actions and the `i` sit above it). | mock |
 | R8 | One top-band treatment everywhere: page headers are `safeAreaBar`s and content scrolls under them with the **soft** scroll-edge fade. Never a hidden/painted toolbar background, never `.hard`. Every main-window column uses `.scrollEdgeEffectStyle(.soft, for: .top)`. | lint |
 | R9 | Keyboard moves (j/k, ⌘↑/↓) keep the selected row visible with the **least** movement: one step down from the top does not scroll; a long run brings the row to the edge. No visual jumps. | mock |
 | R10 | Choosing an inbox the open thread is not in clears the selection. | mock |
@@ -39,6 +39,8 @@ Screenshots of every checked state are written next to the test's result JSON.
 | R25 | The filter icon sits left of the inbox title. | mock |
 | R26 | No messenger badge on list rows (it stays in the thread header and account block). | lint |
 | R27 | Groups of three or more are named after all members and their stacked avatar carries a "+N" badge. | mock |
+| R28 | Every conversation row is the same height (two preview lines always reserved) and the avatar is vertically centered. | mock |
+| R29 | Row hover actions are labels · snooze · archive only (pin and note live on the top band). | lint |
 | R6b | The thread header keeps its exact place whether the sidebar is open or collapsed, and is not jammed against the top edge (52pt band). | mock |
 | R20 | No personal data in the repo: tests, fixtures and the mock store use obviously synthetic people (`*-example`, `*-sample`), never real names, slugs, ids or message text. | review on every change |
 | R19 | Everything that touches LinkedIn goes through the `allman` CLI; the app never writes into `~/.allman`; app-owned state lives in Application Support (`ALLMAN_APPSUPPORT` overrides it for tests/harness). | lint (R19) + code review |

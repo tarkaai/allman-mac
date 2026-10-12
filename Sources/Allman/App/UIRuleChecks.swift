@@ -127,6 +127,17 @@ enum UIRuleChecks {
             check("R21", "\(label): pin·label·snooze·note·archive beside the `i`, same size and row", frames.count == 5 && sameRow && ordered, "found=\(frames.count) i=\(Int(i.minX)),\(Int(i.midY))")
         }
         actionsInPlace("panel closed")
+        let headerClosed = ax(w, "thread-header")
+        // R28: rows all the same height, avatar vertically centered.
+        let visibleRows = order.map(\.record.convId).compactMap { ax(w, "row-\($0)") }.filter { listF0 in listF0.height > 0 }
+        if let lf = ax(w, "conversation-list") {
+            let inside = visibleRows.filter { $0.minY >= lf.minY - 1 && $0.maxY <= lf.maxY + 1 }
+            let heights = inside.map { Int($0.height.rounded()) }
+            check("R28", "every conversation row is the same height", inside.count >= 5 && Set(heights).count == 1, "heights=\(Set(heights).sorted())")
+            let avatars = axAll(w, "row-avatar").filter { $0.minY >= lf.minY - 1 && $0.maxY <= lf.maxY + 1 }
+            let centered = inside.allSatisfy { row in avatars.contains { abs($0.midY - row.midY) < 1.5 } }
+            check("R28", "row avatars are vertically centered", !inside.isEmpty && centered, "rows=\(inside.count) avatars=\(avatars.count)")
+        }
         let toggles = axAll(w, "inspector-toggle")
         check("R5", "exactly one contact-panel toggle while closed", toggles.count == 1, "count=\(toggles.count)")
         if toggles.isEmpty { dump(w, to: shots); return checks }
@@ -153,12 +164,13 @@ enum UIRuleChecks {
         actionsInPlace("panel open")
         check("R5", "the `i` did not move", abs((openToggles.first?.midX ?? -99) - closedX) < 2, "closed.x=\(Int(closedX)) open.x=\(Int(openToggles.first?.midX ?? -99))")
         check("R5", "no » overflow with the panel open", !hasOverflow(w))
-        check("R6", "thread header hidden while the panel is open", ax(w, "thread-header") == nil)
-        if let ph = ax(w, "inspector-header"), let col = ax(w, "inspector-column") {
-            check("R7", "panel header on the top band", y(ph).top < Chrome.barHeight, "top=\(Int(y(ph).top))")
-            check("R7", "panel header aligned over the panel", abs(ph.minX - col.minX) < 24 && ph.maxX <= (openToggles.first?.minX ?? .infinity), "header.x=\(Int(ph.minX)) column.x=\(Int(col.minX))")
-            check("R7", "panel body starts under its header on the top band", y(col).top <= Chrome.barHeight + 1, "column.top=\(Int(y(col).top))")
-        } else { check("R7", "panel header + column present", false, "missing AX elements") }
+        if let h = ax(w, "thread-header"), let h0 = headerClosed {
+            check("R6", "thread header stays exactly where it was while the panel is open", abs(h.minX - h0.minX) < 1 && abs(h.minY - h0.minY) < 1, "x \(Int(h0.minX))→\(Int(h.minX)) y \(Int(h0.minY))→\(Int(h.minY))")
+        } else { check("R6", "thread header present while the panel is open", false) }
+        check("R7", "the panel has no header of its own", ax(w, "inspector-header") == nil)
+        if let col = ax(w, "inspector-column") {
+            check("R7", "panel body starts under the band (actions and `i` above it)", y(col).top >= Chrome.barHeight - 1 && y(col).top <= Chrome.barHeight + 1, "column.top=\(Int(y(col).top))")
+        } else { check("R7", "panel column present", false) }
         let b1 = threadAtBottom()
         check("R17", "thread still at the newest message after the panel opened", b1.0, b1.1)
 

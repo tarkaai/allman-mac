@@ -318,17 +318,15 @@ struct MessengerDetail: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .safeAreaBar(edge: .top) {
                     PageBar(trailingSlot: Chrome.trailingSlot) {
-                        if !panel { detailHeader }
+                        detailHeader // stays, panel or no panel
                     } trailing: { EmptyView() }
                 }
             if panel, let snap = inbox.selected {
                 ContactInspector(snapshot: snap)
                     .id(snap.record.convId)
-                    .safeAreaBar(edge: .top) {
-                        PageBar(fixedLeading: 16, trailingSlot: Chrome.trailingSlot) {
-                            InspectorHeader(snapshot: snap)
-                        } trailing: { EmptyView() }
-                    }
+                    // No header of its own (the thread header stays put); just the band's height
+                    // kept clear for the actions and the `i`, with the body scrolling under.
+                    .safeAreaBar(edge: .top) { Color.clear.frame(height: Chrome.barHeight).uiProbe("panel-band") }
                     .background(Color.primary.opacity(0.035))
                     .frame(width: Chrome.panelWidth)
                     .transition(.move(edge: .trailing))

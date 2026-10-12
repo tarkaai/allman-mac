@@ -532,8 +532,8 @@ struct ConversationRow: View {
         let labels = org.labels(for: r.convId)
         let snooze = org.snooze(r.convId)
         let hasNote = !org.note(r.convId).isEmpty
-        HStack(alignment: .top, spacing: 10) {
-            ConversationAvatar(record: r, size: 40)
+        HStack(alignment: .center, spacing: 10) {
+            ConversationAvatar(record: r, size: 40).uiProbe("row-avatar")
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(r.displayName)
@@ -553,13 +553,14 @@ struct ConversationRow: View {
                         .monospacedDigit()
                 }
                 HStack(alignment: .top, spacing: 6) {
+                    // Two preview lines are always reserved, so every row is the same height.
                     if let m = snapshot.lastMessage {
                         Text((m.isFromMe ? "You: " : "") + m.previewText.replacingOccurrences(of: "\n", with: " "))
                             .font(AFont.secondary)
                             .foregroundStyle(unread ? .primary : .secondary)
-                            .lineLimit(2)
-                    } else if let h = r.headline {
-                        Text(h).font(AFont.secondary).foregroundStyle(.tertiary).lineLimit(2)
+                            .lineLimit(2, reservesSpace: true)
+                    } else {
+                        Text(r.headline ?? " ").font(AFont.secondary).foregroundStyle(.tertiary).lineLimit(2, reservesSpace: true)
                     }
                     Spacer(minLength: 0)
                     if unread {
@@ -608,13 +609,10 @@ private struct RowActions: View {
     var body: some View {
         let inbox = model.inbox
         HStack(spacing: 0) {
-            btn(inbox.isPinned(convId) ? "pin.fill" : "pin", "Pin") { inbox.togglePin(convId) }
             btn("tag", "Labels") { open(.label) }
                 .popover(isPresented: shown(.label), arrowEdge: .bottom) { LabelPicker(convId: convId).environment(model) }
             btn("clock", "Snooze") { open(.snooze) }
                 .popover(isPresented: shown(.snooze), arrowEdge: .bottom) { SnoozePicker(convId: convId) { inbox.rowPopover = nil }.environment(model) }
-            btn("note.text", "Note") { open(.note) }
-                .popover(isPresented: shown(.note), arrowEdge: .bottom) { NoteEditor(convId: convId, compact: true).environment(model) }
             btn(inbox.isArchived(convId) ? "tray.and.arrow.up" : "archivebox", "Archive") { inbox.toggleArchive(convId) }
         }
         .padding(.horizontal, 4)

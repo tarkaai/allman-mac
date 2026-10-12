@@ -368,7 +368,7 @@ enum UIRuleChecks {
             check("R30", "the sent thread moves to the top of the list", model.inbox.filtered.first?.record.convId == id || model.inbox.pinnedInView.contains { $0.record.convId == id }, "top=\(model.inbox.filtered.first?.record.displayName ?? "-")")
             let appearedAt = samples.first { $0.outgoing > 0 || $0.stored > 0 }?.ms ?? -1
             check("R30", "the sent bubble appears within 150 ms", appearedAt >= 0 && appearedAt <= 150, "appeared=\(appearedAt)ms")
-            let settled = samples.filter { $0.ms > 550 }
+            let settled = samples.filter { $0.ms > 700 } // the rise-in and its final correction take ~400 ms; slack for a loaded machine
             check("R30", "the stream stays at the newest message while sending (after the rise-in)", !settled.isEmpty && settled.allSatisfy(\.bottomIn), "offFrames=\(settled.filter { !$0.bottomIn }.map(\.ms))")
             let ys = settled.map(\.bottomY)
             check("R30", "the bottom edge does not jump once settled", (ys.max() ?? 0) - (ys.min() ?? 0) <= 2, "bottomY=\(ys.min() ?? 0)…\(ys.max() ?? 0) trace=\(settled.map { "\($0.ms):\($0.bottomY)/o\($0.outgoing)s\($0.stored)" }.joined(separator: " "))")

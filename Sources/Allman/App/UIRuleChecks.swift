@@ -162,13 +162,15 @@ enum UIRuleChecks {
         // R32: the thread *content* narrows at the pace the panel appears (several widths over the animation,
         // no single jump), and bubbles keep their size — only whitespace moves.
         let bubbleWidths0 = axAll(w, "bubble-shape").map { Int($0.width.rounded()) }
-        var widths: [Int] = []
-        for _ in 0..<12 { try await sleep(25); widths.append(Int(ax(w, "thread-bottom")?.width ?? 0)) }
+        var widths: [Int] = [], bottoms: [Int] = []
+        for _ in 0..<12 { try await sleep(25); widths.append(Int(ax(w, "thread-bottom")?.width ?? 0)); bottoms.append(Int(ax(w, "thread-bottom")?.maxY ?? 0)) }
+        check("R32c", "messages do not shift while the panel opens (bottom edge still at every frame)", (bottoms.max() ?? 0) - (bottoms.min() ?? 0) <= 1, "bottomY=\(bottoms)")
         try await sleep(400)
         shot("02-panel-open")
         let distinct = Array(Set(widths)).count
         let jumps = zip(widths, widths.dropFirst()).map { abs($1 - $0) }
-        check("R32", "opening the panel narrows the thread content gradually, in step with the panel", distinct >= 3 && (jumps.max() ?? 0) <= Int(Chrome.panelWidth) / 2, "widths=\(widths)")
+        // 25 ms samples of a 250 ms ease: the steepest step is ~⅔ of the width on a loaded machine; a jump would be the whole width in one step.
+        check("R32", "opening the panel narrows the thread content gradually, in step with the panel", distinct >= 4 && (jumps.max() ?? 0) <= Int(Chrome.panelWidth * 0.7), "widths=\(widths)")
         let bubbleWidths1 = axAll(w, "bubble-shape").map { Int($0.width.rounded()) }
         check("R32", "bubbles keep their size when the panel opens (only whitespace moves)", bubbleWidths0.sorted() == bubbleWidths1.sorted(), "before=\(bubbleWidths0.sorted().suffix(4)) after=\(bubbleWidths1.sorted().suffix(4))")
         let headerW1 = ax(w, "thread-header")?.width ?? 0
@@ -192,7 +194,10 @@ enum UIRuleChecks {
 
         // --- R5: clicking again closes it.
         clickProbe("inspector-toggle", in: w)
-        try await sleep(700)
+        var bottomsClose: [Int] = []
+        for _ in 0..<12 { try await sleep(25); bottomsClose.append(Int(ax(w, "thread-bottom")?.maxY ?? 0)) }
+        try await sleep(400)
+        check("R32c", "messages do not shift while the panel closes", (bottomsClose.max() ?? 0) - (bottomsClose.min() ?? 0) <= 1, "bottomY=\(bottomsClose)")
         check("R5", "clicking the `i` again closes the panel", !model.inspectorVisible)
         check("R5", "one `i`, same place, after closing", axAll(w, "inspector-toggle").count == 1 && abs((ax(w, "inspector-toggle")?.midX ?? -99) - closedX) < 2)
         let b2 = threadAtBottom()
@@ -315,6 +320,26 @@ enum UIRuleChecks {
         shot("07-settings")
         check("R13", "Settings opens inside the main window (no second window)", visibleWindows().count == windowsBefore && model.experience == .settings, "windows=\(visibleWindows().count)")
         check("R13", "chrome bar still first on the settings page", (ax(w, "sidebar-toggle")?.minX ?? 0) < (ax(w, "experience-switcher")?.minX ?? -1))
+        // R38: switching pages is immediate — the page's header is on screen within 150 ms, and the main
+        // thread's first turn after the switch is short (data fills in afterwards).
+        func measureSwitch(_ e: AppModel.Experience, header: String) async throws -> (turnMs: Int, headerMs: Int) {
+            let t0 = Date()
+            model.show(e)
+            await Task.yield()
+            let turn = Int(Date().timeIntervalSince(t0) * 1000)
+            var headerAt = -1
+            for i in 0..<30 { try await sleep(10); if ax(w, header) != nil { headerAt = (i + 1) * 10; break } }
+            return (turn, headerAt)
+        }
+        let toNetwork = try await measureSwitch(.network, header: "network-header")
+        check("R38", "⌘2 Network shows its page at once (rows fill in)", toNetwork.headerMs >= 0 && toNetwork.headerMs <= 150 && toNetwork.turnMs < 250, "turn=\(toNetwork.turnMs)ms header=\(toNetwork.headerMs)ms connections=\(model.inbox.connections.count)")
+        var arrived = -1
+        for i in 0..<80 { try await sleep(100); if model.inbox.connections.count >= 12_000, !model.inbox.connectionsLoading { arrived = (i + 1) * 100; break } }
+        check("R38", "Network rows (12k) arrive after the switch, within 8 s", arrived > 0, "arrivedAfter=\(arrived)ms connections=\(model.inbox.connections.count)")
+        let toInsights = try await measureSwitch(.insights, header: "insights-header")
+        check("R38", "⌘3 Insights shows its page at once (numbers fill in)", toInsights.headerMs >= 0 && toInsights.headerMs <= 150 && toInsights.turnMs < 250, "turn=\(toInsights.turnMs)ms header=\(toInsights.headerMs)ms")
+        let toMessenger = try await measureSwitch(.messenger, header: "thread-header")
+        check("R38", "⌘1 Messenger shows its page at once", toMessenger.headerMs >= 0 && toMessenger.headerMs <= 150 && toMessenger.turnMs < 250, "turn=\(toMessenger.turnMs)ms header=\(toMessenger.headerMs)ms")
         model.show(.network); try await sleep(600); shot("08-network")
         check("R13", "Network inside the main window", visibleWindows().count == windowsBefore)
         // R34: the new-message button is on the band everywhere; from another page it switches to the inbox and starts the draft.
@@ -345,10 +370,11 @@ enum UIRuleChecks {
         let headerBefore = ax(w, "thread-header")
         let bubblesBefore = axAll(w, "bubble-shape").map { Int($0.width.rounded()) }.sorted()
         model.toggleSidebar()
-        var contentWidths: [Int] = []
-        for _ in 0..<12 { try await sleep(25); contentWidths.append(Int(ax(w, "thread-bottom")?.width ?? 0)) }
+        var contentWidths: [Int] = [], bottomsCollapse: [Int] = []
+        for _ in 0..<12 { try await sleep(25); contentWidths.append(Int(ax(w, "thread-bottom")?.width ?? 0)); bottomsCollapse.append(Int(ax(w, "thread-bottom")?.maxY ?? 0)) }
         try await sleep(600)
         shot("09-collapsed")
+        check("R32c", "messages do not shift while the sidebar collapses", (bottomsCollapse.max() ?? 0) - (bottomsCollapse.min() ?? 0) <= 1, "bottomY=\(bottomsCollapse)")
         check("R32b", "collapsing the sidebar shifts the thread gradually", Array(Set(contentWidths)).count >= 3, "widths=\(contentWidths)")
         check("R32b", "bubbles keep their size when the sidebar collapses (only whitespace moves)", bubblesBefore == axAll(w, "bubble-shape").map { Int($0.width.rounded()) }.sorted(), "before=\(bubblesBefore.suffix(4)) after=\(axAll(w, "bubble-shape").map { Int($0.width.rounded()) }.sorted().suffix(4))")
         check("R4", "collapsed: the sidebar toggle is still visible", (ax(w, "sidebar-toggle")?.width ?? 0) > 10)

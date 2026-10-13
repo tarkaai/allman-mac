@@ -20,6 +20,15 @@ enum MockStore {
         ]
         try write(json: auth, to: account.appendingPathComponent("AUTH.json"))
         try fm.createSymbolicLink(at: root.appendingPathComponent(slug), withDestinationURL: URL(fileURLWithPath: profileId))
+        // A network the size of a real one (12k), so the Network page's cost shows up in the checks.
+        let firsts = ["Avery", "Blake", "Cam", "Dakota", "Emerson", "Finley", "Harper", "Indigo", "Jordan", "Kai", "Logan", "Morgan", "Noa", "Oakley", "Parker", "Quinn"]
+        let lasts = ["Example", "Sample", "Placeholder", "Mock", "Fixture", "Dummy", "Stub", "Test"]
+        for n in 0..<12_000 {
+            let first = firsts[n % firsts.count], last = lasts[(n / firsts.count) % lasts.count]
+            let conn: [String: Any?] = ["flagshipId": "ACoAAMOCKCONN\(String(format: "%05d", n))", "publicIdentifier": "\(first.lowercased())-\(last.lowercased())-\(n)", "firstName": first, "lastName": "\(last) \(n)",
+                                        "headline": "Role \(n % 40) at Company \(n % 97)", "title": n % 3 == 0 ? "Role \(n % 40)" : nil, "company": n % 3 == 0 ? "Company \(n % 97)" : nil, "location": n % 5 == 0 ? "Example City" : nil]
+            try write(json: conn, to: account.appendingPathComponent("connections/\(conn["flagshipId"]!!).json"))
+        }
 
         let now = Date()
         let names = ["Avery Lane", "Blake Rivera", "Cam Nguyen", "Dakota Shaw", "Emerson Cole", "Finley Park", "Harper Quinn", "Indigo Reyes", "Jordan Blake", "Kai Morgan",

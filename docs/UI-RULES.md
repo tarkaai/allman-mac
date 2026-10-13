@@ -51,6 +51,8 @@ Screenshots of every checked state are written next to the test's result JSON.
 | R35 | Insights are per account (sidebar lists every signed-in account) over a window of time — all time, past year/month/week/day by calendar days, or a custom number of days; the header is two lines (page + account). | mock + unit |
 | R36 | Every icon button has the same hover highlight and its own tooltip (`IconButton`); no tooltips for a whole group. | lint |
 | R37 | Glass, not gray: the account block and the new-message pane use the blur material over the list. | review |
+| R32c | Opening/closing the panel and collapsing the sidebar never shift the messages (the bottom edge stays put at every frame) and never scroll programmatically. | mock |
+| R38 | Switching pages (⌘1–⌘4) is immediate: the page's header is on screen within 150 ms and the main thread's first turn is short; data (rows, numbers) fills in afterwards with loading/empty states. | mock (12,000 mock connections) |
 | R28 | Every conversation row is the same height (two preview lines always reserved) and the avatar is vertically centered. | mock |
 | R29 | Row hover actions are labels · snooze · archive only (pin and note live on the top band). | lint |
 | R6b | The thread header keeps its exact place whether the sidebar is open or collapsed, and is not jammed against the top edge (52pt band). | mock |

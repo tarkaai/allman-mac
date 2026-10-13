@@ -67,6 +67,10 @@ struct NetworkDetail: View {
     @State private var enrichLimit = 50
     @State private var enrichDeep = false
     @State private var confirmPull = false
+    /// Sorted/filtered rows, prepared off the main thread so switching to this page
+    /// never waits on 10k comparisons; the page shows at once and the rows fill in.
+    @State private var rows: [Connection] = []
+    @State private var preparing = false
 
     var body: some View {
         let inbox = model.inbox
@@ -77,7 +81,8 @@ struct NetworkDetail: View {
         .scrollEdgeEffectStyle(.soft, for: .top)
         .safeAreaBar(edge: .top) {
             PageBar {
-                PageHeader(symbol: net.tab.symbol, title: net.tab.rawValue, line1: subtitle(inbox, net), line2: net.query.isEmpty ? nil : "\(filtered.count.formatted()) match “\(net.query)”")
+                PageHeader(symbol: net.tab.symbol, title: net.tab.rawValue, line1: subtitle(inbox, net), line2: net.query.isEmpty ? (preparing ? "Preparing…" : nil) : "\(rows.count.formatted()) match “\(net.query)”")
+                    .uiProbe("network-header")
             } trailing: {
                 HStack(spacing: 8) {
                     Button { confirmPull = true } label: { Label("Pull Connections", systemImage: "arrow.down.circle") }
@@ -100,6 +105,7 @@ struct NetworkDetail: View {
                 .controlSize(.small)
             }
         }
+        .task(id: "\(model.network.tab.rawValue)|\(model.network.query)|\(sortOrder.count)|\(sortOrder.first?.order == .forward)|\(model.inbox.connections.count)") { await prepareRows() }
         .sheet(isPresented: $connecting) { ConnectSheet(slug: "", name: "").environment(model) }
         .alert("Pull connections from LinkedIn?", isPresented: $confirmPull) {
             Button("Pull all") { net.pullConnections() }
@@ -132,23 +138,34 @@ struct NetworkDetail: View {
         }
     }
 
-    private var filtered: [Connection] {
-        let q = model.network.query.trimmingCharacters(in: .whitespaces)
-        let all = scoped
+    /// What `rows` is built from, as plain values for the background task.
+    private static func prepare(_ all: [Connection], query: String, sortOrder: [KeyPathComparator<Connection>]) -> [Connection] {
+        let q = query.trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { return all.sorted(using: sortOrder) }
         var scores: [String: Int] = [:]
-        let rows = all.filter { c in
+        let hits = all.filter { c in
             let sc = SearchRank.score(name: c.name, secondary: [c.title, c.company, c.slug], tertiary: [c.location, c.headline], query: q)
             if sc > 0 { scores[c.id] = sc }
             return sc > 0
         }
-        return rows.sorted { (scores[$0.id] ?? 0, $0.name) > (scores[$1.id] ?? 0, $1.name) }
+        return hits.sorted { (scores[$0.id] ?? 0, $0.name) > (scores[$1.id] ?? 0, $1.name) }
+    }
+
+    private func prepareRows() async {
+        let all = scoped, q = model.network.query, order = sortOrder
+        preparing = true
+        let next = await Task.detached(priority: .userInitiated) { Self.prepare(all, query: q, sortOrder: order) }.value
+        rows = next
+        preparing = false
     }
 
     @ViewBuilder
     private func connectionsTable(_ inbox: InboxModel) -> some View {
-        let rows = filtered
-        if inbox.connections.isEmpty {
+        if inbox.connections.isEmpty, inbox.connectionsLoading || (preparing && !inbox.connections.isEmpty) {
+            // Still reading the store: a loading state, never a false "no connections".
+            ContentUnavailableView { Label("Loading your connections…", systemImage: "person.2") } description: { ProgressView() }
+                .uiProbe("network-loading")
+        } else if inbox.connections.isEmpty {
             ContentUnavailableView {
                 Label("No connections stored", systemImage: "person.2")
             } description: {

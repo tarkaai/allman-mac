@@ -23,9 +23,6 @@ struct ThreadView: View {
     @State private var highlightedUrn: String?
     /// Scrolled to (near) the newest message. A width change (panel, resize) re-pins when true.
     @State private var atBottom = true
-    /// While set, a pane-width change is in progress and the bottom is held, whatever the
-    /// intermediate geometry says (rows re-wrap before the new width is reported).
-    @State private var holdBottomUntil = Date.distantPast
     @Environment(\.detailFullWidth) private var detailFullWidth
 
     private enum Row: Identifiable {
@@ -96,26 +93,13 @@ struct ThreadView: View {
                     // (panel, resize) rows re-wrap and the offset is in flux; the latched value
                     // keeps the bottom anchored through the change.
                     // Content re-wraps (new height) before the container reports its new width.
-                    guard Date() >= holdBottomUntil, old.containerSize == new.containerSize, old.contentSize == new.contentSize else { return }
+                    guard old.containerSize == new.containerSize, old.contentSize == new.contentSize else { return }
                     atBottom = new.visibleRect.maxY >= new.contentSize.height - 48
                     if UIProbeRegistry.enabled { NSLog("thread: geometry visible=\(Int(new.visibleRect.minY))…\(Int(new.visibleRect.maxY)) content=\(Int(new.contentSize.height)) container=\(Int(new.containerSize.width))x\(Int(new.containerSize.height)) atBottom=\(atBottom)") }
                 }
-                .onChange(of: geo.size.width) { _, _ in
-                    // Rows re-wrap while the pane animates; snap (no animation of our own) to the
-                    // newest message over the next frames so the bottom stays in view throughout.
-                    if UIProbeRegistry.enabled { NSLog("thread: width change atBottom=\(atBottom)") }
-                    guard atBottom else { return }
-                    let alreadyHolding = Date() < holdBottomUntil
-                    holdBottomUntil = Date().addingTimeInterval(0.7)
-                    guard !alreadyHolding else { return }
-                    Task { @MainActor in
-                        while Date() < holdBottomUntil {
-                            proxy.scrollTo("bottom", anchor: .bottom)
-                            try? await Task.sleep(for: .milliseconds(40))
-                        }
-                        proxy.scrollTo("bottom", anchor: .bottom)
-                    }
-                }
+                // Width changes (panel, sidebar, resize): bubbles keep their size and the bottom
+                // anchor keeps the newest message in place — no programmatic scroll, so nothing
+                // shifts and the scroller doesn't flash.
                 // Bottom-anchored, not scrolled-to: the scroll view is rebuilt once the
                 // thread has content, so its initial offset is the newest message, and
                 // the bottom stays anchored while images and previews grow the content

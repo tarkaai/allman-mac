@@ -727,10 +727,15 @@ final class InboxModel {
         Task { await reloadConnections() }
     }
 
+    /// True while `connections/` is being read (a loading state, not "no connections").
+    private(set) var connectionsLoading = false
+
     /// `connections/` is ~10k files; read it off the main thread.
     func reloadConnections() async {
         guard let dir = accountDir else { return }
         let reader = self.reader
+        connectionsLoading = true
+        defer { connectionsLoading = false }
         let loaded = await Task.detached(priority: .utility) { reader.loadConnections(accountDir: dir) }.value
         guard accountDir == dir else { return }
         connections = loaded

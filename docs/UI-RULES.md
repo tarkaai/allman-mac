@@ -39,7 +39,7 @@ Screenshots of every checked state are written next to the test's result JSON.
 | R25 | The filter icon sits left of the inbox title. | mock |
 | R26 | No messenger badge on list rows (it stays in the thread header and account block). | lint |
 | R27 | Groups of three or more are named after all members and their stacked avatar carries a "+N" badge. | mock |
-| R30 | Sending feels solid: the bubble appears within 150 ms, the stream stays pinned to the newest message at every frame, the placeholder and its stored copy never show together, nothing flashes, the row slides to the top of the list, and a "Sent" line under the newest own message keeps the placeholder→stored swap height-neutral. | mock (50 samples at 50 ms, from a thread not at the top) |
+| R30 | Sending is one motion: the bubble rises from the composer into the feed once, the stream stays pinned at every frame, and the stored copy takes over the *same* row (same identity, same position and size) — the status flips "Sending…" → "Sent" in place; nothing is removed, re-inserted or duplicated. The stored copy is picked up from the store by the file watcher before the CLI process returns. | mock (80 samples at 50 ms; fake CLI writes at 0.4 s and returns at 3 s, like the real one) |
 | R31 | The row hover capsule (labels · snooze · archive) is centered on its row and its icons are centered in it. | mock |
 | R27b | Group avatars pack every face inside one avatar-sized circle (two on a diagonal, three in a triangle); four or more add "+N". | mock + screenshot |
 | R32 | Opening the contact panel narrows the thread at the pace the panel appears (no jump, then slide); bubbles are sized for the detail with the panel closed, so mostly whitespace collapses. | mock |

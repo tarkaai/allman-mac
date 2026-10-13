@@ -4,7 +4,10 @@
 # a message to the thread's JSONL after a delay, just like the real CLI's
 # write lands before its process exits.
 #
-#   FAKE_SEND_DELAY=2     seconds before `send` writes + returns (default 2)
+#   FAKE_SEND_DELAY=2     seconds before `send` returns (default 2)
+#   FAKE_SEND_WRITE_DELAY seconds before `send` writes the message to the store (default: same as
+#                         FAKE_SEND_DELAY). The real CLI writes first and exits later, so the file
+#                         watcher reloads the thread before the process returns.
 #   FAKE_SEND_FAIL=1      make `send` fail with an HTTP 500 after the delay
 set -euo pipefail
 
@@ -57,8 +60,11 @@ case "$cmd" in
         *) [[ -z "$body" ]] && body="${rest[$i]}"; i=$((i+1)) ;;
       esac
     done
-    sleep "${FAKE_SEND_DELAY:-2}"
+    total="${FAKE_SEND_DELAY:-2}"; write_after="${FAKE_SEND_WRITE_DELAY:-$total}"
+    sleep "$write_after"
     if [[ "${FAKE_SEND_FAIL:-0}" == "1" ]]; then echo "LinkedIn API error: HTTP 500" >&2; exit 1; fi
+    # The rest of the wait happens after the write (see the end of this case).
+    remaining="$(python3 -c "print(max(0.0, float('$total') - float('$write_after')))")"
     # Several targets (a,b,c): a new group thread, like `allman send` ≥ 0.6.
     if [[ "$target" == *,* ]]; then
       python3 - "$acct" "$target" "$body" <<'EOFG'
@@ -98,6 +104,7 @@ with open(os.path.join(d, "messages", time.strftime("%Y-%m") + ".jsonl"), "a") a
     out.write(json.dumps({"urn": urn, "timestamp": now_ms, "fromUrn": auth.get("urn"), "fromName": auth.get("name"), "isFromMe": True, "body": body, "reactions": [], "attachments": [], "originToken": None}) + "\n")
 print(json.dumps({"messageUrn": urn, "conversationUrn": "urn:li:messagingThread:" + conv_id, "sentAt": now_ms, "recipients": targets}))
 EOFG
+      sleep "$remaining"
       exit 0
     fi
     # Resolve the thread: slug/id entry in the account dir, else a RECORD.json mentioning it.
@@ -125,6 +132,7 @@ with open(f, "a") as out:
     out.write(json.dumps({"urn": urn, "timestamp": int(ts), "fromUrn": me, "fromName": name, "isFromMe": True,
                           "body": body, "reactions": [], "attachments": json.loads(attachments), "originToken": None}) + "\n")
 EOF
+    sleep "$remaining"
     printf '{"messageUrn":"%s","conversationUrn":"urn:li:messagingThread:%s","sentAt":%s}\n' "$urn" "$(basename "$conv")" "$ts"
     ;;
   read|react|media|logout|login) printf '{}\n' ;;

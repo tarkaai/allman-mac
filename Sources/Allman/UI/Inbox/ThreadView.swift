@@ -27,12 +27,12 @@ struct ThreadView: View {
 
     private enum Row: Identifiable {
         case stamp(Date)
-        case message(Message, showsTail: Bool, sender: String?)
+        case message(Message, showsTail: Bool, sender: String?, rowId: String)
         case outgoing(InboxModel.OutgoingMessage)
         var id: String {
             switch self {
             case .stamp(let d): return "stamp-\(d.timeIntervalSince1970)"
-            case .message(let m, _, _): return m.id
+            case .message(_, _, _, let rowId): return rowId
             case .outgoing(let o): return "outgoing-\(o.id)"
             }
         }
@@ -76,8 +76,8 @@ struct ThreadView: View {
                             switch row {
                             case .stamp(let date):
                                 TimeStamp(date: date).padding(.vertical, 10)
-                            case .message(let msg, let tail, let sender):
-                                storedRow(msg, tail: tail, sender: sender, convId: convId, maxBubble: maxBubble, newestOwnId: newestOwnId)
+                            case .message(let msg, let tail, let sender, let rowId):
+                                storedRow(msg, rowId: rowId, tail: tail, sender: sender, convId: convId, maxBubble: maxBubble, newestOwnId: newestOwnId)
                             case .outgoing(let item):
                                 outgoingRow(item, convId: convId, maxBubble: maxBubble)
                             }
@@ -125,24 +125,13 @@ struct ThreadView: View {
                     // animated scroll here is what made the stream hop after a send.
                     if old > 0, new > old, messages.last?.isFromMe != true {
                         slideToBottom(proxy, .easeOut(duration: 0.25))
-                    } else if old > 0, new > old, atBottom {
-                        // The stored copy can be a few points shorter than the placeholder: land
-                        // exactly on the bottom, instantly (an animated scroll here hops).
-                        proxy.scrollTo("bottom", anchor: .bottom)
-                        Task { @MainActor in
-                            // The swap lays out over a few frames (more on a loaded machine): keep landing.
-                            for ms in [40, 80, 130, 250] {
-                                try? await Task.sleep(for: .milliseconds(ms))
-                                if atBottom { proxy.scrollTo("bottom", anchor: .bottom) }
-                            }
-                        }
                     }
+                    // Our own stored copy takes over its placeholder's row in place: same height
+                    // ("Sending…" → "Sent"), same identity — nothing to scroll.
                 }
-                .onChange(of: outgoing.count) { old, new in
-                    // Our bubble rises out of the composer and everything above moves up with it
-                    // (eased, no bounce: a spring overshoots and reads as a wobble).
-                    if new > old { slideToBottom(proxy, .easeOut(duration: 0.3)) }
-                }
+                // Our bubble rises out of the composer (its insertion transition); the bottom
+                // anchor takes the growth, so no scroll call is needed — scroll calls on top of
+                // the transition are what jittered.
                 .onChange(of: inbox.scrollTarget?.token) { _, _ in jumpIfNeeded(proxy, all: allMessages) }
                 .onChange(of: allMessages.isEmpty) { _, empty in if !empty { jumpIfNeeded(proxy, all: allMessages) } }
                 .onAppear { jumpIfNeeded(proxy, all: allMessages) }
@@ -160,7 +149,7 @@ struct ThreadView: View {
     }
 
     @ViewBuilder
-    private func storedRow(_ msg: Message, tail: Bool, sender: String?, convId: String, maxBubble: CGFloat, newestOwnId: String?) -> some View {
+    private func storedRow(_ msg: Message, rowId: String, tail: Bool, sender: String?, convId: String, maxBubble: CGFloat, newestOwnId: String?) -> some View {
         let inbox = model.inbox
         MessageRow(
             message: msg,
@@ -176,7 +165,7 @@ struct ThreadView: View {
             onReact: { emoji in Task { await inbox.react(msg, in: convId, emoji: emoji) } },
             onReply: { inbox.replyingTo[convId] = msg }
         )
-        .id(msg.id)
+        .id(rowId)
         .uiProbe("bubble-stored")
     }
 
@@ -198,7 +187,8 @@ struct ThreadView: View {
         )
         .id("outgoing-\(item.id)")
         .uiProbe("bubble-outgoing")
-        // Rises out of the composer into the stream, like Messages.
+        // Rises out of the composer into the stream, like Messages. Its stored copy later
+        // takes over this very row (same id), so there is no removal to animate.
         .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .identity))
     }
 
@@ -266,7 +256,9 @@ struct ThreadView: View {
                 let newRun = prev == nil || prev!.isFromMe || prev!.fromUrn != m.fromUrn || m.timestamp - prev!.timestamp > 60 * 60 * 1000
                 if newRun { sender = snapshot.record.participant(for: m)?.displayName ?? m.fromName }
             }
-            out.append(.message(m, showsTail: tail, sender: sender))
+            // A stored copy of something sent from here keeps its placeholder's identity.
+            let rowId = model.inbox.placeholderIds[m.urn].map { "outgoing-\($0)" } ?? m.id
+            out.append(.message(m, showsTail: tail, sender: sender, rowId: rowId))
             prev = m
         }
         // Just-sent messages ride at the end, under today's divider if the thread's last day isn't today.

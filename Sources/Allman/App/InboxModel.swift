@@ -385,6 +385,7 @@ final class InboxModel {
         let w = StoreWatcher(accountDir: account.dir) { [weak self] change in
             guard let self else { return }
             Task { @MainActor in
+                if UIProbeRegistry.enabled { NSLog("watcher: change convIds=\(change.convIds.count) structural=\(change.structural)") }
                 if change.structural { await self.reloadAll() } else if !change.convIds.isEmpty { await self.reload(convIds: change.convIds) }
                 if change.connectionsChanged { self.scheduleConnectionsReload() }
             }
@@ -471,19 +472,33 @@ final class InboxModel {
     /// The CLI writes the sent message to disk before its process exits, and the
     /// file watcher reloads it. Drop the placeholder the moment its stored copy
     /// is on screen, so the two never show together.
+    /// Stored message urn → the placeholder it replaced. The thread keeps using the
+    /// placeholder's row identity for that message, so the bubble that rose out of the
+    /// composer is the same view that later says "Sent" — nothing is removed or re-inserted.
+    private(set) var placeholderIds: [String: String] = [:]
+
     private func reconcileOutgoing(_ convId: String, with msgs: [Message]) {
         guard let items = outgoing[convId], !items.isEmpty else { return }
+        var mapped: [String: String] = [:]
         let keep = items.filter { item in
             if case .failed = item.state { return true }
             let since = Int64(item.createdAt.timeIntervalSince1970 * 1000) - 120_000
-            let stored = msgs.contains { m in
-                guard m.isFromMe, m.timestamp >= since else { return false }
-                if item.audioURL != nil { return m.attachments.contains { $0.type == "voice" || $0.type == "audio" } }
+            // Your exact text, stored within the send window, is your message whatever the
+            // sender field says (a listen echo can resolve the sender late).
+            let stored = msgs.last { m in
+                guard m.timestamp >= since, !mapped.values.contains(m.urn), placeholderIds[m.urn] == nil else { return false }
+                if item.audioURL != nil { return m.isFromMe && m.attachments.contains { $0.type == "voice" || $0.type == "audio" } }
                 return m.body.trimmingCharacters(in: .whitespacesAndNewlines) == item.body
             }
-            return !stored
+            if let stored { mapped[stored.urn] = item.id }
+            return stored == nil
         }
-        if keep.count != items.count { withAnimation(nil) { outgoing[convId] = keep } }
+        if keep.count != items.count {
+            withAnimation(nil) {
+                placeholderIds.merge(mapped) { _, new in new }
+                outgoing[convId] = keep
+            }
+        }
     }
 
     private static let downloadable: Set<String> = ["image", "gif", "file", "audio", "voice", "video"]

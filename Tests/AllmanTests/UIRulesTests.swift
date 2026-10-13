@@ -32,7 +32,8 @@ final class UIRulesTests: XCTestCase {
         env["ALLMAN_APPSUPPORT"] = support.path
         env["ALLMAN_UICHECK_OUT"] = out.path
         env["ALLMAN_UICHECK_SHOTS"] = shots.path
-        env["FAKE_SEND_DELAY"] = "1"
+        env["FAKE_SEND_DELAY"] = "3"          // the CLI returns here…
+        env["FAKE_SEND_WRITE_DELAY"] = "0.4"  // …but the message lands in the store here, like the real one
         p.environment = env
         p.standardOutput = FileHandle.nullDevice
         p.standardError = FileHandle(forWritingAtPath: "/dev/null")

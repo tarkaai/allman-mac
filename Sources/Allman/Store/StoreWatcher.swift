@@ -24,7 +24,9 @@ final class StoreWatcher {
     private var debounce: DispatchWorkItem?
 
     init(accountDir: URL, onChange: @escaping (Change) -> Void) {
-        self.root = accountDir.standardizedFileURL
+        // FSEvents reports real paths (/private/var/…); a store reached through a symlink
+        // (/var/…, or a linked ~/.allman) would otherwise never match.
+        self.root = accountDir.resolvingSymlinksInPath().standardizedFileURL
         self.onChange = onChange
     }
 
@@ -71,7 +73,9 @@ final class StoreWatcher {
 
     private func ingest(_ paths: [String]) {
         let rootPath = root.path.hasSuffix("/") ? root.path : root.path + "/"
-        for p in paths {
+        for raw in paths {
+            // Foundation strips "/private" from /var, /tmp and /etc paths; FSEvents keeps it. Compare like with like.
+            let p = raw.hasPrefix("/private/") && !rootPath.hasPrefix("/private/") ? String(raw.dropFirst("/private".count)) : raw
             guard p.hasPrefix(rootPath) else { continue }
             let rel = p.dropFirst(rootPath.count)
             let first = rel.split(separator: "/", maxSplits: 1).first.map(String.init) ?? ""

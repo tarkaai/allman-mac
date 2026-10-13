@@ -343,7 +343,7 @@ struct InboxBar: View {
                 Text(title(inbox.filter)).font(AFont.title).lineLimit(1).frame(height: 22).uiProbe("inbox-title")
                 Spacer(minLength: 8)
                 HStack(spacing: 2) {
-                IconButton(symbol: "tag.badge.plus", help: "New label (an inbox of its own)") { creatingLabel = true }
+                IconButton(symbol: "plus.circle", help: "New label (an inbox of its own)") { creatingLabel = true }
                     .popover(isPresented: $creatingLabel, arrowEdge: .bottom) {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("New label").font(.headline)

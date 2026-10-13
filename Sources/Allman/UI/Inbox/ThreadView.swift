@@ -53,10 +53,10 @@ struct ThreadView: View {
         VStack(spacing: 0) {
             ReminderBanner(convId: convId).padding(.top, 6)
             GeometryReader { geo in
-            // Sized for the detail with the panel closed, so opening it mostly collapses
-            // whitespace instead of re-wrapping every bubble.
+            // Sized for the detail with the sidebar open and the panel closed — the same whatever
+            // either does — so collapsing or opening only moves whitespace, never re-wraps text.
             let full = detailFullWidth > 0 ? detailFullWidth : geo.size.width
-            let maxBubble = min(max(260, (full - 32) * 0.6), max(200, geo.size.width - 32))
+            let maxBubble = min(max(260, (full - Chrome.panelWidth - 32) * 0.72), max(200, geo.size.width - 32))
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 2) {
@@ -122,9 +122,6 @@ struct ThreadView: View {
                 // afterwards. No programmatic scrolling on open at all.
                 .id(messages.isEmpty ? "empty" : "loaded")
                 .scrollPosition($position)
-                // While the panel slides, the thread follows the width frame by frame — no
-                // crossfading text at a different pace than the bubbles.
-                .transaction { t in if model.panelAnimating { t.animation = nil } }
                 .defaultScrollAnchor(.bottom)
                 // While at the newest message, any size change (a panel opening, the window
                 // resizing, the composer growing) keeps it there — anchored, not re-scrolled.
@@ -494,6 +491,7 @@ struct MessageRow: View {
         .padding(.horizontal, 12).padding(.vertical, 7)
         .foregroundStyle(mine ? .white : .primary)
         .background(bubbleColor, in: RoundedRectangle(cornerRadius: BubbleStyle.radius, style: .continuous))
+        .uiProbe("bubble-shape")
         .overlay(
             RoundedRectangle(cornerRadius: BubbleStyle.radius, style: .continuous)
                 .stroke(Color.yellow, lineWidth: highlighted ? 2.5 : 0)

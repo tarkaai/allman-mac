@@ -115,6 +115,9 @@ enum UIRuleChecks {
             check("R6", "thread header on the top band, left of the detail", y(header).top < Chrome.barHeight, "top=\(Int(y(header).top))")
             check("R6", "thread header is not jammed against the top edge", y(header).top >= 8, "top=\(Int(y(header).top))")
         } else { check("R6", "thread header present while the panel is closed", false) }
+        if let sb = ax(w, "sidebar"), let cb = ax(w, "compose-button"), let sw = ax(w, "experience-switcher") {
+            check("R34", "new-message button at the top-right of the sidebar, on the band", cb.maxX <= sb.maxX - 4 && cb.minX > sw.maxX && y(cb).top < Chrome.barHeight, "compose.x=\(Int(cb.minX))…\(Int(cb.maxX)) sidebar.maxX=\(Int(sb.maxX))")
+        } else { check("R34", "compose button + sidebar present", false) }
         if let fm = ax(w, "filter-menu"), let title = ax(w, "inbox-title") { check("R25", "filter icon sits left of the inbox title", fm.maxX <= title.minX, "filter.x=\(Int(fm.minX)) title.x=\(Int(title.minX))") } else { check("R25", "filter menu + title present", false) }
         if let cb = ax(w, "compose-button") { check("R15c", "new-message button is a step larger than the bar icons", cb.height >= 26 && cb.width >= 28, "\(Int(cb.width))x\(Int(cb.height))") }
         // R21: the thread's actions sit beside the `i`, same size, same row.
@@ -156,14 +159,18 @@ enum UIRuleChecks {
         // --- R5: clicking the `i` opens the panel (it is clickable); still one `i`, same place.
         let headerW0 = ax(w, "thread-header")?.width ?? 0
         clickProbe("inspector-toggle", in: w)
-        // R32: the thread narrows at the pace the panel appears (several widths over the animation, no single jump).
+        // R32: the thread *content* narrows at the pace the panel appears (several widths over the animation,
+        // no single jump), and bubbles keep their size — only whitespace moves.
+        let bubbleWidths0 = axAll(w, "bubble-shape").map { Int($0.width.rounded()) }
         var widths: [Int] = []
-        for _ in 0..<12 { try await sleep(25); widths.append(Int(ax(w, "thread-scroll")?.width ?? 0)) }
+        for _ in 0..<12 { try await sleep(25); widths.append(Int(ax(w, "thread-bottom")?.width ?? 0)) }
         try await sleep(400)
         shot("02-panel-open")
         let distinct = Array(Set(widths)).count
         let jumps = zip(widths, widths.dropFirst()).map { abs($1 - $0) }
-        check("R32", "opening the panel narrows the thread gradually, in step with the panel", distinct >= 3 && (jumps.max() ?? 0) <= Int(Chrome.panelWidth) / 2, "widths=\(widths)")
+        check("R32", "opening the panel narrows the thread content gradually, in step with the panel", distinct >= 3 && (jumps.max() ?? 0) <= Int(Chrome.panelWidth) / 2, "widths=\(widths)")
+        let bubbleWidths1 = axAll(w, "bubble-shape").map { Int($0.width.rounded()) }
+        check("R32", "bubbles keep their size when the panel opens (only whitespace moves)", bubbleWidths0.sorted() == bubbleWidths1.sorted(), "before=\(bubbleWidths0.sorted().suffix(4)) after=\(bubbleWidths1.sorted().suffix(4))")
         let headerW1 = ax(w, "thread-header")?.width ?? 0
         check("R33", "the thread header keeps its full width when the panel opens (no needless ellipsis)", abs(headerW1 - headerW0) < 2, "width \(Int(headerW0))→\(Int(headerW1))")
         check("R5", "clicking the `i` opens the panel", model.inspectorVisible)
@@ -323,6 +330,11 @@ enum UIRuleChecks {
         check("R35", "insights sidebar lists the account(s)", !axAll(w, "insights-account-\(model.current?.id ?? "")").isEmpty)
         check("R35", "insights range chips: all time · year · month · week · day · custom", InsightsRange.allCases.allSatisfy { ax(w, "insights-range-\($0.rawValue)") != nil })
         if let h = ax(w, "insights-header") { check("R35", "insights header is two lines (page + account)", h.height <= 40, "height=\(Int(h.height))") }
+        // R35b: switching the window never blanks the page — the tiles stay and their values change.
+        var tilePresent: [Bool] = []
+        clickProbe("insights-range-allTime", in: w)
+        for _ in 0..<20 { try await sleep(50); tilePresent.append(ax(w, "insights-tile-sent") != nil) }
+        check("R35b", "switching the time window keeps the tiles on screen (no flash)", tilePresent.allSatisfy { $0 }, "present=\(tilePresent.filter { $0 }.count)/\(tilePresent.count)")
         clickProbe("insights-range-custom", in: w); try await sleep(500)
         check("R35", "custom range shows a days field", ax(w, "insights-custom-days") != nil)
         clickProbe("insights-range-month", in: w); try await sleep(300)
@@ -331,9 +343,16 @@ enum UIRuleChecks {
         // --- R4: collapsing the sidebar leaves the chrome bar exactly where it is; R13b: per-page memory, Settings never collapses.
         let toggleBefore = ax(w, "sidebar-toggle"); let switcherBefore = ax(w, "experience-switcher")
         let headerBefore = ax(w, "thread-header")
+        let bubblesBefore = axAll(w, "bubble-shape").map { Int($0.width.rounded()) }.sorted()
         model.toggleSidebar()
-        try await sleep(900)
+        var contentWidths: [Int] = []
+        for _ in 0..<12 { try await sleep(25); contentWidths.append(Int(ax(w, "thread-bottom")?.width ?? 0)) }
+        try await sleep(600)
         shot("09-collapsed")
+        check("R32b", "collapsing the sidebar shifts the thread gradually", Array(Set(contentWidths)).count >= 3, "widths=\(contentWidths)")
+        check("R32b", "bubbles keep their size when the sidebar collapses (only whitespace moves)", bubblesBefore == axAll(w, "bubble-shape").map { Int($0.width.rounded()) }.sorted(), "before=\(bubblesBefore.suffix(4)) after=\(axAll(w, "bubble-shape").map { Int($0.width.rounded()) }.sorted().suffix(4))")
+        check("R4", "collapsed: the sidebar toggle is still visible", (ax(w, "sidebar-toggle")?.width ?? 0) > 10)
+        check("R4b", "every icon button's symbol exists", IconButton.seenSymbols.allSatisfy { NSImage(systemSymbolName: $0, accessibilityDescription: nil) != nil }, "missing=\(IconButton.seenSymbols.filter { NSImage(systemSymbolName: $0, accessibilityDescription: nil) == nil })")
         check("R4", "sidebar collapses (slid out to the left)", model.isSidebarCollapsed && (ax(w, "sidebar").map { $0.maxX < 2 } ?? true) && (ax(w, "conversation-list")?.maxX ?? 0) < 2, "sidebar.maxX=\(Int(ax(w, "sidebar")?.maxX ?? 0))")
         if let t = ax(w, "sidebar-toggle"), let s = ax(w, "experience-switcher"), let t0 = toggleBefore, let s0 = switcherBefore {
             check("R4", "collapsed: toggle and switcher did not move", abs(t.minX - t0.minX) < 1 && abs(t.minY - t0.minY) < 1 && abs(s.minX - s0.minX) < 1, "toggle \(Int(t0.minX))→\(Int(t.minX)) switcher \(Int(s0.minX))→\(Int(s.minX))")
@@ -346,6 +365,8 @@ enum UIRuleChecks {
         shot("09b-settings")
         model.toggleSidebar(); try await sleep(300)
         check("R13b", "Settings never collapses the sidebar", !model.isSidebarCollapsed && !model.canCollapseSidebar)
+        check("R4", "Settings: the sidebar toggle is still visible", (ax(w, "sidebar-toggle")?.width ?? 0) > 10)
+        check("R34", "Settings: the new-message button is on the band", ax(w, "compose-button") != nil)
         model.show(.messenger); try await sleep(700)
         check("R13b", "Messenger comes back collapsed, as left", model.isSidebarCollapsed)
         model.toggleSidebar(); try await sleep(900)
@@ -357,8 +378,9 @@ enum UIRuleChecks {
             model.inbox.rowPopover = .init(convId: hoverId, kind: .label)
             try await sleep(500)
             shot("05c-row-hover")
-            if let capsule = ax(w, "row-actions"), let row = ax(w, "row-\(hoverId)") {
-                let icons = axAll(w, "row-action-icon")
+            // The capsule for *this* row (a synthesized click elsewhere can leave another row hovered).
+            if let row = ax(w, "row-\(hoverId)"), let capsule = axAll(w, "row-actions").min(by: { abs($0.midY - row.midY) < abs($1.midY - row.midY) }) {
+                let icons = axAll(w, "row-action-icon").filter { $0.midY >= capsule.minY - 1 && $0.maxY <= capsule.maxY + 1 }
                 check("R31", "hover capsule is vertically centered on its row", abs(capsule.midY - row.midY) < 1.5, "capsule.midY=\(Int(capsule.midY)) row.midY=\(Int(row.midY))")
                 check("R31", "hover icons are vertically centered in the capsule", icons.count == 3 && icons.allSatisfy { abs($0.midY - capsule.midY) < 1.5 }, "icons=\(icons.count)")
             } else { check("R31", "hover capsule present", false) }

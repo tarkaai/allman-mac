@@ -26,6 +26,7 @@ struct InboxWindow: View {
     var body: some View {
         @Bindable var inbox = model.inbox
         let collapsed = model.isSidebarCollapsed
+        GeometryReader { geo in
         ZStack(alignment: .topLeading) {
             HStack(spacing: 0) {
                 SidebarView()
@@ -34,23 +35,34 @@ struct InboxWindow: View {
                 detail
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            ChromeBar()
-                .padding(.leading, Chrome.chromeLeading)
-                .frame(height: Chrome.barHeight)
-            // New message (always), then the thread's actions and the one `i` — far right,
-            // whatever the panel or sidebar do.
-            HStack(spacing: 2) {
-                Spacer()
-                IconButton(symbol: "square.and.pencil", help: "New message (⌘N) — pick several people for a group", size: .band) { model.startNewMessage() }
-                    .uiProbe("compose-button")
-                if model.experience == .messenger, inbox.selected != nil || inbox.draft != nil {
+            // Bubbles are sized for the detail with the sidebar open and the panel closed, so
+            // collapsing the sidebar or opening the panel only moves whitespace.
+            .environment(\.detailFullWidth, max(300, geo.size.width - Chrome.sidebarWidth))
+            // Chrome bar at the top-left, the new-message button at the sidebar's top-right
+            // (beside the chrome bar once the sidebar is collapsed).
+            HStack(spacing: 10) {
+                ChromeBar()
+                if collapsed { composeButton }
+            }
+            .padding(.leading, Chrome.chromeLeading)
+            .frame(height: Chrome.barHeight)
+            if !collapsed {
+                composeButton
+                    .padding(.leading, Chrome.sidebarWidth - 12 - 28)
+                    .frame(height: Chrome.barHeight)
+            }
+            // The thread's actions and the one `i` — far right, whatever the panel or sidebar do.
+            if model.experience == .messenger, inbox.selected != nil || inbox.draft != nil {
+                HStack(spacing: 2) {
+                    Spacer()
                     if let id = inbox.selectedConvId, inbox.draft == nil { ThreadActions(convId: id) }
                     InspectorToggle()
                 }
+                .padding(.trailing, 12)
+                .frame(height: Chrome.barHeight)
+                .uiProbe("top-actions")
             }
-            .padding(.trailing, 12)
-            .frame(height: Chrome.barHeight)
-            .uiProbe("top-actions")
+        }
         }
         .animation(.easeInOut(duration: 0.25), value: collapsed)
         .ignoresSafeArea(.container, edges: .top)
@@ -88,6 +100,11 @@ struct InboxWindow: View {
             }
         }
         .animation(.default, value: inbox.toast)
+    }
+
+    private var composeButton: some View {
+        IconButton(symbol: "square.and.pencil", help: "New message (⌘N) — pick several people for a group", size: .band) { model.startNewMessage() }
+            .uiProbe("compose-button")
     }
 
     @ViewBuilder
@@ -137,10 +154,11 @@ struct ChromeBar: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            IconButton(symbol: model.isSidebarCollapsed ? "sidebar.leading" : "sidebar.leading.fill",
+            // One real symbol (`sidebar.leading`); "on" tint while the sidebar is open. Never disabled —
+            // on Settings it is simply a no-op with a tooltip saying so.
+            IconButton(symbol: "sidebar.leading",
                        help: model.canCollapseSidebar ? (model.isSidebarCollapsed ? "Show sidebar (⌃⌘S)" : "Hide sidebar (⌃⌘S)") : "Settings keeps its sidebar",
-                       size: .band, tint: model.canCollapseSidebar ? nil : Color.secondary.opacity(0.4), shortcut: "s", modifiers: [.control, .command]) { model.toggleSidebar() }
-                .disabled(!model.canCollapseSidebar)
+                       size: .band, on: !model.isSidebarCollapsed, shortcut: "s", modifiers: [.control, .command]) { model.toggleSidebar() }
                 .uiProbe("sidebar-toggle")
             ExperienceSwitcher()
         }
@@ -286,11 +304,9 @@ struct MessengerDetail: View {
     var body: some View {
         let inbox = model.inbox
         let panel = model.inspectorVisible && inbox.draft == nil && inbox.selected != nil
-        GeometryReader { geo in
         HStack(spacing: 0) {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .environment(\.detailFullWidth, geo.size.width)
                 .safeAreaBar(edge: .top) {
                     // With the panel open the actions sit above the panel, so the header may use the whole column.
                     PageBar(trailingSlot: panel ? 12 : Chrome.trailingSlot) {
@@ -308,7 +324,6 @@ struct MessengerDetail: View {
                     .frame(width: panel ? Chrome.panelWidth : 0, alignment: .leading)
                     .clipped()
             }
-        }
         }
         .animation(.easeInOut(duration: 0.25), value: model.inspectorVisible)
     }

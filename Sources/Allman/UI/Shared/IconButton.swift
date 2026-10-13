@@ -43,6 +43,10 @@ struct IconButton: View {
 
     @State private var hovering = false
 
+    /// Every symbol name used by an icon button (the checker verifies each one resolves —
+    /// a misspelt name renders as nothing, and the button "disappears").
+    @MainActor static var seenSymbols: Set<String> = []
+
     var body: some View {
         let b = Button(action: action) {
             Image(systemName: symbol)
@@ -56,6 +60,7 @@ struct IconButton: View {
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .help(help)
+        .onAppear { if UIProbeRegistry.enabled { _ = IconButton.seenSymbols.insert(symbol) } }
         if let shortcut { b.keyboardShortcut(shortcut, modifiers: modifiers) } else { b }
     }
 }

@@ -60,7 +60,7 @@ struct PeopleSearchResults: View {
                 }
             }
             if query.trimmingCharacters(in: .whitespaces).count < 2 {
-                Text("Type a name, or paste a linkedin.com/in/… link. Your conversations and connections match as you type; LinkedIn search kicks in after three characters.")
+                Text("Type a name, or paste a linkedin.com/in/… link. Search starts after two characters: your conversations and connections first, then LinkedIn.")
                     .font(AFont.secondary).foregroundStyle(.secondary)
                     .lineLimit(nil).fixedSize(horizontal: false, vertical: true)
                     .listRowSeparator(.hidden)
@@ -157,7 +157,7 @@ struct PeopleSearchResults: View {
         searchTask?.cancel()
         remoteError = nil
         let trimmed = q.trimmingCharacters(in: .whitespaces)
-        guard trimmed.count >= 3, pastedSlug == nil else { remote = []; searching = false; return }
+        guard trimmed.count >= 2, pastedSlug == nil else { remote = []; searching = false; return }
         searchTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(450))
             guard !Task.isCancelled else { return }

@@ -44,7 +44,10 @@ Screenshots of every checked state are written next to the test's result JSON.
 | R27b | Group avatars pack every face inside one avatar-sized circle (two on a diagonal, three in a triangle); four or more add "+N". | mock + screenshot |
 | R32 | Opening the contact panel narrows the thread at the pace the panel appears (no jump, then slide); bubbles are sized for the detail with the panel closed, so mostly whitespace collapses. | mock |
 | R33 | The thread header keeps its full width when the panel opens; it may use the whole column before truncating. | mock |
-| R34 | The new-message button lives on the top band and is always visible; from any page it switches to the inbox and starts a new message. Its instructions wrap. | mock |
+| R34 | The new-message button sits at the top-right of the sidebar on the band (beside the chrome bar once the sidebar is collapsed), always visible; from any page it switches to the inbox and starts a new message. Its instructions wrap and say search starts after two characters. | mock |
+| R4b | Every icon button's symbol name must exist (a misspelt name renders as nothing). | mock |
+| R32b | Collapsing or opening the sidebar, like the panel, shifts the thread gradually and never re-wraps bubbles — bubbles are sized for the sidebar-open, panel-closed width. | mock |
+| R35b | Switching the insights window never blanks the page; tiles stay and their numbers animate to the new values. | mock |
 | R35 | Insights are per account (sidebar lists every signed-in account) over a window of time — all time, past year/month/week/day by calendar days, or a custom number of days; the header is two lines (page + account). | mock + unit |
 | R36 | Every icon button has the same hover highlight and its own tooltip (`IconButton`); no tooltips for a whole group. | lint |
 | R37 | Glass, not gray: the account block and the new-message pane use the blur material over the list. | review |

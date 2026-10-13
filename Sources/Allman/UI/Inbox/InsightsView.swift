@@ -34,6 +34,7 @@ struct InsightsView: View {
     @Environment(AppModel.self) private var model
     @State private var insights: Insights?
     @State private var customDraft = ""
+    @State private var computing = false
 
     var body: some View {
         @Bindable var model = model
@@ -57,6 +58,7 @@ struct InsightsView: View {
                         .help(r == .allTime ? "Every stored message" : (r == .custom ? "A number of calendar days of your choosing" : "Since the start of the day \(r.days(custom: 0) ?? 0) days ago"))
                         .uiProbe("insights-range-\(r.rawValue)")
                     }
+                    if computing { ProgressView().controlSize(.mini).padding(.leading, 4).help("Recomputing") }
                     if model.insightsRange == .custom {
                         HStack(spacing: 4) {
                             TextField("days", text: $customDraft)
@@ -150,7 +152,8 @@ struct InsightsView: View {
         if let n = Int(customDraft.trimmingCharacters(in: .whitespaces)), n > 0 { model.insightsCustomDays = n; reload() }
     }
 
-    private func reload() { insights = nil; Task { await load() } }
+    /// The numbers stay on screen while the next window computes; each value then animates to its new figure.
+    private func reload() { Task { await load() } }
 
     private func load() async {
         guard let session = model.insightsSession else { return }
@@ -159,13 +162,16 @@ struct InsightsView: View {
         let reader = model.reader
         let snaps = session.inbox.snapshots
         let since = model.insightsRange.since(custom: model.insightsCustomDays)
-        insights = await Task.detached(priority: .userInitiated) { Insights.compute(reader: reader, accountDir: dir, snapshots: snaps, since: since) }.value
+        computing = true
+        let next = await Task.detached(priority: .userInitiated) { Insights.compute(reader: reader, accountDir: dir, snapshots: snaps, since: since) }.value
+        computing = false
+        withAnimation(.easeInOut(duration: 0.3)) { insights = next }
     }
 
     private func tile(_ title: String, _ value: String, _ detail: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title).font(.caption).foregroundStyle(.secondary)
-            Text(value).font(.title2.weight(.semibold)).monospacedDigit()
+            Text(value).font(.title2.weight(.semibold)).monospacedDigit().contentTransition(.numericText())
             Text(detail).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

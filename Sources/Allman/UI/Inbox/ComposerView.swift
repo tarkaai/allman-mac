@@ -95,6 +95,7 @@ struct ComposerView: View {
                 }
             }
             .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 19, style: .continuous))
+        .uiProbe("composer")
             .overlay(RoundedRectangle(cornerRadius: 19, style: .continuous).stroke(Color(nsColor: .separatorColor)))
             }
         }

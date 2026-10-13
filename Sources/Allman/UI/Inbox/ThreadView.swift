@@ -242,13 +242,16 @@ struct ThreadView: View {
         var out: [Row] = []
         var prev: Message?
         let cal = Calendar.current
+        // Placeholders count as the messages that follow: a stored message's tail must not
+        // change when its placeholder is replaced by the stored copy (that 6 pt shifted the stream).
+        let sequence = messages + outgoing.map(\.asMessage)
         for (i, m) in messages.enumerated() {
             if let p = prev {
                 if !cal.isDate(m.date, inSameDayAs: p.date) { out.append(.stamp(m.date)) }
             } else {
                 out.append(.stamp(m.date))
             }
-            let next = i + 1 < messages.count ? messages[i + 1] : nil
+            let next = i + 1 < sequence.count ? sequence[i + 1] : nil
             let tail = next == nil || next!.isFromMe != m.isFromMe || next!.timestamp - m.timestamp > 60 * 60 * 1000
             // In a group, name the sender at the start of each run from someone else.
             var sender: String?
@@ -415,7 +418,7 @@ struct MessageRow: View {
         if let pending {
             switch pending {
             case .sending:
-                Text("Sending…").font(.caption2).foregroundStyle(.secondary)
+                Text("Sending…").font(.caption2).foregroundStyle(.secondary).uiProbe("sending-status")
             case .failed(let reason):
                 HStack(spacing: 8) {
                     Label("Not Delivered", systemImage: "exclamationmark.circle.fill")

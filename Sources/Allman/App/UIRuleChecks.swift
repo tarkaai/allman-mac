@@ -423,7 +423,8 @@ enum UIRuleChecks {
 
         // --- R30: sending feels solid — the bubble appears at once, the stream stays pinned to the
         // bottom at every frame, and the placeholder and its stored copy never show together.
-        if let conv = order.dropFirst(4).first(where: { !$0.record.isGroupThread }) {
+        // A thread whose last message is yours: the previous bubble's tail must not change when the stored copy lands.
+        if let conv = order.dropFirst(4).first(where: { !$0.record.isGroupThread && $0.lastMessage?.isFromMe == true }) {
             model.inbox.select(conv.record.convId, reveal: true)
             try await sleep(1200)
             let id = conv.record.convId
@@ -431,9 +432,23 @@ enum UIRuleChecks {
             let text = "Harness ping \(Int(Date().timeIntervalSince1970))"
             let storedBefore = axAll(w, "bubble-stored").count
             var samples: [(ms: Int, bottomIn: Bool, outgoing: Int, stored: Int, bottomY: Int)] = []
-            var lastPlaceholderFrame: CGRect?, firstStoredFrame: CGRect?, returnedAt = -1
+            var lastPlaceholderFrame: CGRect?, firstStoredFrame: CGRect?, returnedAt = -1, fineTrace: [String] = []
             let t0 = Date()
             Task { _ = await model.inbox.send(text, to: id); returnedAt = Int(Date().timeIntervalSince(t0) * 1000) }
+            // Fine trace around the Sending→Sent flip: every 10 ms, the lowest bubble, its caption, the composer and the bottom marker.
+            Task { @MainActor in
+                var fine: [String] = []
+                for _ in 0..<400 {
+                    try? await Task.sleep(for: .milliseconds(10))
+                    let ms = Int(Date().timeIntervalSince(t0) * 1000)
+                    let bub = axAll(w, "bubble-shape").max(by: { $0.maxY < $1.maxY })
+                    let cap = ax(w, "sending-status") ?? ax(w, "sent-status")
+                    let capKind = ax(w, "sending-status") != nil ? "sending" : (ax(w, "sent-status") != nil ? "sent" : "-")
+                    fine.append("\(ms):b\(Int(bub?.minY ?? -1))…\(Int(bub?.maxY ?? -1)) \(capKind)\(Int(cap?.minY ?? -1))…\(Int(cap?.maxY ?? -1)) comp\(Int(ax(w, "composer")?.minY ?? -1)) bot\(Int(ax(w, "thread-bottom")?.maxY ?? -1))")
+                }
+                if let shots { try? fine.joined(separator: "\n").write(to: shots.appendingPathComponent("send-fine.txt"), atomically: true, encoding: .utf8) }
+                fineTrace = fine
+            }
             for i in 0..<80 {
                 try await sleep(50)
                 let ms = Int(Date().timeIntervalSince(t0) * 1000)
@@ -459,6 +474,13 @@ enum UIRuleChecks {
             check("R30", "the message ends up stored, placeholder gone", samples.last.map { $0.stored == 1 && $0.outgoing == 0 } == true && axAll(w, "bubble-stored").count == storedBefore + 1, "last=\(samples.last.map { "out=\($0.outgoing) stored=\($0.stored)" } ?? "-") bubbles \(storedBefore)→\(axAll(w, "bubble-stored").count)")
             let swappedAt = samples.first { $0.stored > 0 }?.ms ?? -1
             check("R30", "the stored copy is picked up from the store before the CLI returns (watcher path)", swappedAt > 0 && (returnedAt < 0 || swappedAt < returnedAt), "stored@\(swappedAt)ms returned@\(returnedAt)ms")
+            // Every 10 ms sample from 300 ms before the flip to the end must show the same bubble/caption/bottom numbers.
+            try await sleep(900)
+            if let flipAt = fineTrace.firstIndex(where: { $0.contains(" sent") }) {
+                let strip: (String) -> String = { String($0.split(separator: ":", maxSplits: 1).last ?? "").replacingOccurrences(of: "sending", with: "cap").replacingOccurrences(of: "sent", with: "cap") }
+                let window = fineTrace[max(0, flipAt - 30)...].map(strip)
+                check("R30", "nothing moves through the Sending→Sent flip (10 ms trace: bubble, caption, composer, bottom)", Set(window).count == 1, "distinct=\(Set(window).sorted().prefix(3))")
+            } else { check("R30", "fine trace saw the Sent status", false, "samples=\(fineTrace.count)") }
             if let a = lastPlaceholderFrame, let b = firstStoredFrame {
                 check("R30", "Sending→Sent flips in place: the bubble keeps its position and size", abs(a.minX - b.minX) < 1.5 && abs(a.minY - b.minY) < 1.5 && abs(a.width - b.width) < 1.5, "placeholder=\(Int(a.minX)),\(Int(a.minY)) \(Int(a.width))w stored=\(Int(b.minX)),\(Int(b.minY)) \(Int(b.width))w")
             } else { check("R30", "placeholder and stored frames captured", false) }

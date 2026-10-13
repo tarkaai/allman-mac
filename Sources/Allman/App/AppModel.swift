@@ -66,6 +66,14 @@ final class AppModel {
         didSet { UserDefaults.standard.set(inspectorVisible, forKey: Self.inspectorKey) }
     }
 
+    /// Checks and the XCTest host run quietly: never activate the app or take key status,
+    /// so a test run doesn't pull the person's focus (one window appears, behind their work).
+    static let quiet: Bool = {
+        let env = ProcessInfo.processInfo.environment
+        return env["ALLMAN_UICHECK_OUT"].map { !$0.isEmpty } == true || env["XCTestConfigurationFilePath"] != nil
+    }()
+    private func activate() { if !Self.quiet { NSApp.activate(ignoringOtherApps: true) } }
+
     /// New message from anywhere: the messenger, sidebar open, people search ready.
     func startNewMessage() {
         experience = .messenger
@@ -357,7 +365,7 @@ final class AppModel {
         if let accountId { select(accountId: accountId) }
         if let convId { experience = .messenger; inbox.select(convId, reveal: true) }
         closePanel?()
-        NSApp.activate(ignoringOtherApps: true)
+        activate()
         openInboxWindow?()
     }
 
@@ -370,7 +378,7 @@ final class AppModel {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "allman-conversations-\(current?.slug ?? "export").csv"
         panel.allowedContentTypes = [.commaSeparatedText]
-        NSApp.activate(ignoringOtherApps: true)
+        activate()
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let inbox = self.inbox
         let csv = Exporter.conversationsCSV(inbox.snapshots, organizer: inbox.organizer) { inbox.connection(for: $0) }
@@ -384,7 +392,7 @@ final class AppModel {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "\(snap.record.slug ?? snap.record.convId).md"
         panel.allowedContentTypes = [.plainText]
-        NSApp.activate(ignoringOtherApps: true)
+        activate()
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let msgs = inbox.messages[snap.record.convId] ?? reader.readMessages(accountDir: dir, convId: snap.record.convId)
         let md = Exporter.threadMarkdown(snap, messages: msgs, organizer: inbox.organizer, connection: inbox.connection(for: snap.record), me: current?.displayName ?? "Me")
@@ -396,7 +404,7 @@ final class AppModel {
     func show(_ experience: Experience) {
         self.experience = experience
         closePanel?()
-        NSApp.activate(ignoringOtherApps: true)
+        activate()
         openInboxWindow?()
     }
 

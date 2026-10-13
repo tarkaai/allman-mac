@@ -322,7 +322,7 @@ enum DebugSnapshots {
         guard let ev = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: modifiers, timestamp: ProcessInfo.processInfo.systemUptime,
                                         windowNumber: window.windowNumber, context: nil, characters: chars, charactersIgnoringModifiers: chars,
                                         isARepeat: false, keyCode: 0) else { return }
-        if !window.performKeyEquivalent(with: ev) { NSApp.sendEvent(ev) }
+        if !window.performKeyEquivalent(with: ev) { window.sendEvent(ev) }
     }
 
     private typealias WindowImageFn = @convention(c) (CGRect, UInt32, UInt32, UInt32) -> Unmanaged<CGImage>?

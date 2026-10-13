@@ -56,7 +56,8 @@ enum UIRuleChecks {
             f.origin.y = mouse.y > vis.midY ? vis.minY : vis.maxY - f.height
             w.setFrameOrigin(f.origin)
         }
-        w.makeKeyAndOrderFront(nil)
+        // Visible but never key or active: it shows once, behind whatever the person is doing.
+        w.orderFrontRegardless()
         model.inspectorVisible = false
         model.inbox.filter = .all
         try await sleep(1200)
@@ -613,8 +614,8 @@ enum UIRuleChecks {
         let t = ProcessInfo.processInfo.systemUptime
         if let down = NSEvent.mouseEvent(with: .leftMouseDown, location: p, modifierFlags: [], timestamp: t, windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1),
            let up = NSEvent.mouseEvent(with: .leftMouseUp, location: p, modifierFlags: [], timestamp: t + 0.05, windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 0) {
-            NSApp.sendEvent(down)
-            NSApp.sendEvent(up)
+            w.sendEvent(down)
+            w.sendEvent(up)
         }
     }
 
@@ -623,8 +624,8 @@ enum UIRuleChecks {
         let t = ProcessInfo.processInfo.systemUptime
         if let down = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: t, windowNumber: w.windowNumber, context: nil, characters: chars, charactersIgnoringModifiers: chars, isARepeat: false, keyCode: 0),
            let up = NSEvent.keyEvent(with: .keyUp, location: .zero, modifierFlags: [], timestamp: t + 0.03, windowNumber: w.windowNumber, context: nil, characters: chars, charactersIgnoringModifiers: chars, isARepeat: false, keyCode: 0) {
-            NSApp.sendEvent(down)
-            NSApp.sendEvent(up)
+            w.sendEvent(down)
+            w.sendEvent(up)
         }
     }
 }

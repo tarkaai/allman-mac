@@ -59,6 +59,13 @@ Screenshots of every checked state are written next to the test's result JSON.
 | R20 | No personal data in the repo: tests, fixtures and the mock store use obviously synthetic people (`*-example`, `*-sample`), never real names, slugs, ids or message text. | review on every change |
 | R19 | Everything that touches LinkedIn goes through the `allman` CLI; the app never writes into `~/.allman`; app-owned state lives in Application Support (`ALLMAN_APPSUPPORT` overrides it for tests/harness). | lint (R19) + code review |
 
+## Running quietly
+
+A test run never takes your focus: the XCTest host has no window, no status item and starts
+no CLI processes, and the mock run's window is ordered front once without becoming key or
+activating the app (clicks and keys are sent straight to that window). It appears behind
+whatever you are doing and goes away when the run ends.
+
 ## Running
 
 ```sh

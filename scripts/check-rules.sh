@@ -23,6 +23,8 @@ if command grep -rn "\.inspector(" Sources >/dev/null; then bad "R5 .inspector( 
 # R5/R6: the app draws its own chrome — no system toolbar items anywhere (they re-flow, overflow and wash content).
 if command grep -rn "\.toolbar {\|ToolbarItem(" Sources >/dev/null; then bad "R5 system toolbar items found"; else ok "R5 no system toolbar items"; fi
 command grep -q "windowStyle(.hiddenTitleBar)" Sources/Allman/App/AllmanApp.swift && ok "R5 hidden title bar (chrome is ours)" || bad "R5 title bar not hidden"
+# R33: a menu bar app — closing the last window must not quit it.
+command grep -q "applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }" Sources/Allman/App/AppDelegate.swift && ok "R33 last window closed does not quit" || bad "R33 applicationShouldTerminateAfterLastWindowClosed must return false"
 # R4: our own sidebar toggle, fixed at the top-left.
 command grep -q 'uiProbe("sidebar-toggle")' $ui/Inbox/InboxWindow.swift && ok "R4 own toggle present" || bad "R4 own toggle missing"
 # R26: no messenger badge on list rows; R21: the thread actions live on the top band, not in the inbox bar.

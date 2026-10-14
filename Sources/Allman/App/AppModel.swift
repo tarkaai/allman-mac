@@ -40,6 +40,9 @@ final class AppModel {
 
     /// Set by the AppKit controllers so model code can open windows.
     var openInboxWindow: (() -> Void)?
+    /// SwiftUI's `openWindow(id: "inbox")`, captured by the window while it is up so AppKit can
+    /// bring the scene back after ⌘W without a LaunchServices round trip.
+    var openInboxScene: (() -> Void)?
     var closePanel: (() -> Void)?
     /// Dev snapshots only: show every bubble's timestamp as if hovered.
     var debugShowTimes = false

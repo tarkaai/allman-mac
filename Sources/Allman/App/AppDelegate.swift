@@ -3,6 +3,8 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var observers: [NSObjectProtocol] = []
     private(set) var statusItem: StatusItemController?
+    /// The live delegate (NSApp.delegate is SwiftUI's own wrapper, not this instance).
+    private(set) static weak var shared: AppDelegate?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // The unit-test host: no window, no status item, no CLI processes — it only hosts XCTest
@@ -24,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         NSApp.setActivationPolicy(.accessory)
+        Self.shared = self
         MainActor.assumeIsolated {
             let model = AppModel.shared
             statusItem = StatusItemController(model: model)
@@ -63,6 +66,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         })
     }
 
+    /// A menu bar app: closing the inbox (⌘W, the red button) only closes that window. Without
+    /// this SwiftUI's default for a Window-only app is to quit once the last window is gone.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         Task { @MainActor in AppModel.shared.openInbox(convId: nil) }
         return false
@@ -72,13 +79,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         MainActor.assumeIsolated { AppModel.shared.stopAll() }
     }
 
-    /// The Inbox `Window` scene handles external events matching "inbox", so the
-    /// app opening its own URL is the supported way to show it from AppKit.
+    /// Shows the inbox from AppKit (status item, notifications, menu commands). The window is
+    /// re-ordered front when it exists; otherwise the scene's `openWindow` action (captured by
+    /// InboxWindow while it was up) recreates it. The `allman://inbox` URL the scene also
+    /// handles is the fallback before any window has ever appeared — it goes through
+    /// LaunchServices, which may pick a different copy of the app, so it is not the first choice.
     @MainActor static func openInboxScene() {
         if let w = NSApp.windows.first(where: { isInbox($0) && $0.isVisible }) {
             if AppModel.quiet { w.orderFrontRegardless() } else { w.makeKeyAndOrderFront(nil) }
             return
         }
+        if let open = AppModel.shared.openInboxScene { open(); return }
         NSWorkspace.shared.open(URL(string: "allman://inbox")!)
     }
 

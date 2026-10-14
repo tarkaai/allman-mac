@@ -21,6 +21,7 @@ enum Chrome {
 /// detail whose header sits on the same top band. Every experience has this shape.
 struct InboxWindow: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
     @State private var choosingSyncWindow = false
 
     var body: some View {
@@ -66,6 +67,7 @@ struct InboxWindow: View {
         }
         .animation(.easeInOut(duration: 0.25), value: collapsed)
         .ignoresSafeArea(.container, edges: .top)
+        .onAppear { model.openInboxScene = { openWindow(id: "inbox") } }
         .onReceive(NotificationCenter.default.publisher(for: .allmanCompose)) { _ in model.startNewMessage() }
         .onReceive(NotificationCenter.default.publisher(for: .allmanSyncWindow)) { _ in choosingSyncWindow = true }
         .sheet(isPresented: $choosingSyncWindow) { SyncWindowSheet().environment(model) }

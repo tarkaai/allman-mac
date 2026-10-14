@@ -500,6 +500,17 @@ enum UIRuleChecks {
         shot("12-group-sent")
         let sel = model.inbox.selected?.record
         check("R12b", "send created a group thread and opened it", sent && sel?.isGroupThread == true && Set(["nova-example", "kit-example"]).isSubset(of: Set(sel?.members.compactMap(\.slug) ?? [])), "sent=\(sent) selected=\(sel?.displayName ?? "nil")")
+        // --- R33: ⌘W closes the inbox window only; the app stays in the menu bar and reopens it.
+        w.performClose(nil)
+        try await sleep(800)
+        check("R33", "closing the inbox leaves no visible inbox window", window() == nil, "windows=\(visibleWindows().count)")
+        check("R33", "the app is still running as a menu bar item", NSApp.activationPolicy() == .accessory && AppDelegate.shared?.statusItem != nil, "policy=\(NSApp.activationPolicy().rawValue)")
+        model.openInbox(convId: nil)
+        try await wait("reopened window", 10) { window() != nil }
+        let w2 = window()!
+        w2.orderFrontRegardless()
+        try await sleep(600)
+        check("R33", "the status item brings the inbox back without LaunchServices", model.openInboxScene != nil && w2.isVisible && ax(w2, "sidebar-toggle") != nil)
         if let shots { try? UIProbeRegistry.dump.joined(separator: "\n").write(to: shots.appendingPathComponent("probes.txt"), atomically: true, encoding: .utf8) }
         return checks
     }

@@ -57,6 +57,7 @@ Screenshots of every checked state are written next to the test's result JSON.
 | R29 | Row hover actions are labels · snooze · archive only (pin and note live on the top band). | lint |
 | R6b | The thread header keeps its exact place whether the sidebar is open or collapsed, and is not jammed against the top edge (52pt band). | mock |
 | R20 | No personal data in the repo: tests, fixtures and the mock store use obviously synthetic people (`*-example`, `*-sample`), never real names, slugs, ids or message text. | review on every change |
+| R33 | ⌘W (or the red button) closes the inbox window only. The app keeps running as a menu bar item and the status item, a notification or a menu command brings the window back through the scene's own `openWindow`, never by quitting or by a LaunchServices round trip. | mock + lint |
 | R19 | Everything that touches LinkedIn goes through the `allman` CLI; the app never writes into `~/.allman`; app-owned state lives in Application Support (`ALLMAN_APPSUPPORT` overrides it for tests/harness). | lint (R19) + code review |
 
 ## Running quietly

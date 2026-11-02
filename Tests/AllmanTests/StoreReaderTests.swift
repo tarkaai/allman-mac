@@ -92,6 +92,8 @@ final class StoreReaderTests: XCTestCase {
         let msgs = reader.readMessages(accountDir: account, convId: "2-TESTCONV==")
         XCTAssertEqual(msgs.map(\.urn), ["urn:li:messagingMessage:2-MSG1", "urn:li:messagingMessage:2-MSG2"])
         XCTAssertEqual(reader.readLastMessage(accountDir: account, convId: "2-TESTCONV==")?.urn, "urn:li:messagingMessage:2-MSG2")
+        // The list row's preview comes from the snapshot tail, not readLastMessage.
+        XCTAssertEqual(reader.loadSnapshot(accountDir: account, convId: "2-TESTCONV==")?.lastMessage?.urn, "urn:li:messagingMessage:2-MSG2")
         XCTAssertTrue(StoreReader.parseJSONL(data: Data(recalled.utf8)).allSatisfy(\.isRecalled))
     }
 

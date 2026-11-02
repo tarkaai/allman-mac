@@ -106,7 +106,7 @@ struct StoreReader: Sendable {
     func readTail(accountDir: URL, convId: String) -> (last: Message?, inbound: [Int64]) {
         let files = messageFiles(accountDir: accountDir, convId: convId)
         for file in files.reversed() {
-            let msgs = Self.dedupe(Self.parseJSONL(file).sorted { $0.timestamp < $1.timestamp })
+            let msgs = Self.dedupe(Self.parseJSONL(file).sorted { $0.timestamp < $1.timestamp }).filter { !$0.isRecalled }
             guard let newest = msgs.last else { continue }
             let inbound = msgs.filter { !$0.isFromMe }.suffix(100).map(\.timestamp)
             return (newest, Array(inbound))

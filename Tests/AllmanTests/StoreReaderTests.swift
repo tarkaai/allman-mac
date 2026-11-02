@@ -70,6 +70,31 @@ final class StoreReaderTests: XCTestCase {
         XCTAssertEqual(snap.activityDate, snap.lastMessage?.date)
     }
 
+    /// A message its sender deleted comes back from LinkedIn as RECALLED with an
+    /// empty body. It must vanish from the thread and the list preview, not
+    /// render as an empty bubble.
+    func testRecalledMessagesAreDropped() throws {
+        let (store, account) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: store) }
+        let recalled = [
+            // MSG3 re-written as recalled (the sync's later line wins, then is dropped)…
+            #"{"urn":"urn:li:messagingMessage:2-MSG3","timestamp":1791126000000,"fromUrn":"urn:li:fsd_profile:ACoAATEST","fromName":"Jamie Rivera","isFromMe":false,"body":"","reactions":[],"attachments":[],"originToken":null,"renderFormat":"RECALLED"}"#,
+            // …and a newer one of our own that was deleted outright.
+            #"{"urn":"urn:li:messagingMessage:2-MSG4","timestamp":1791129000000,"fromUrn":"urn:li:fsd_profile:ACoAAME","fromName":"Sam Example","isFromMe":true,"body":"","reactions":[],"attachments":[],"originToken":"def","renderFormat":"RECALLED"}"#,
+        ].joined(separator: "\n") + "\n"
+        let file = account.appendingPathComponent("2-TESTCONV==/messages/2026-10.jsonl")
+        let handle = try FileHandle(forWritingTo: file)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data(recalled.utf8))
+        try handle.close()
+
+        let reader = StoreReader(storeURL: store)
+        let msgs = reader.readMessages(accountDir: account, convId: "2-TESTCONV==")
+        XCTAssertEqual(msgs.map(\.urn), ["urn:li:messagingMessage:2-MSG1", "urn:li:messagingMessage:2-MSG2"])
+        XCTAssertEqual(reader.readLastMessage(accountDir: account, convId: "2-TESTCONV==")?.urn, "urn:li:messagingMessage:2-MSG2")
+        XCTAssertTrue(StoreReader.parseJSONL(data: Data(recalled.utf8)).allSatisfy(\.isRecalled))
+    }
+
     func testAttachmentSummaryIgnoresRaw() {
         let line = #"{"urn":"u","timestamp":1,"fromUrn":"x","fromName":"y","isFromMe":false,"body":"","reactions":[],"attachments":[{"type":"post_share","authorName":"Ada","raw":{"a":[1,2,{"b":null}]}}],"originToken":null}"#
         let msgs = StoreReader.parseJSONL(data: Data(line.utf8))

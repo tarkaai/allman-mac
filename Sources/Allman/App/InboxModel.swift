@@ -847,7 +847,10 @@ final class InboxModel {
         var args = ["send", snap.record.sendTarget, body, "--json"]
         if let reply { args += ["--reply-to", reply.urn] }
         do {
-            _ = try await AllmanRunner.runJSON(args, as: SendResult.self, context: ctx, timeout: 60)
+            // Never retried: a send is not idempotent. On 2026-10-30 a stale store
+            // lock made `allman send` exit non-zero after LinkedIn had accepted the
+            // message, and the generic retry delivered it four times.
+            _ = try await AllmanRunner.runJSON(args, as: SendResult.self, context: ctx, timeout: 60, attempts: 1)
             await reload(convIds: [target])
             // The stored copy is on screen now; drop the placeholder without a flash.
             withAnimation(nil) { outgoing[target]?.removeAll { $0.id == item.id } }
@@ -888,7 +891,7 @@ final class InboxModel {
         defer { isSending = !outgoing.values.allSatisfy { $0.allSatisfy { if case .failed = $0.state { return true } else { return false } } } }
         let args = ["send", snap.record.sendTarget, "--audio", fileURL.path, "--duration-ms", String(durationMs), "--json"]
         do {
-            _ = try await AllmanRunner.runJSON(args, as: SendResult.self, context: ctx, timeout: 180)
+            _ = try await AllmanRunner.runJSON(args, as: SendResult.self, context: ctx, timeout: 180, attempts: 1)
             await reload(convIds: [target])
             await loadMessages(convId: target, force: true)
             withAnimation(nil) { outgoing[target]?.removeAll { $0.id == item.id } }
@@ -924,7 +927,7 @@ final class InboxModel {
         do {
             // Several recipients: the CLI creates a group thread (allman send a,b,c).
             let target = recipients.map(\.slug).joined(separator: ",")
-            let result = try await AllmanRunner.runJSON(["send", target, body, "--json"], as: SendResult.self, context: ctx, timeout: 90)
+            let result = try await AllmanRunner.runJSON(["send", target, body, "--json"], as: SendResult.self, context: ctx, timeout: 90, attempts: 1)
             let convUrn = result.conversationUrn ?? ""
             let bare = Self.bareConversationId(convUrn)
             await reloadAll()

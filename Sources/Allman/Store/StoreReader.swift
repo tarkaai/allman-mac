@@ -141,14 +141,15 @@ struct StoreReader: Sendable {
             out.append(contentsOf: Self.parseJSONL(file))
         }
         out.sort { $0.timestamp < $1.timestamp }
-        return Self.dedupe(out)
+        // Dedupe first: a later line for the same id may be the recall of an earlier one.
+        return Self.dedupe(out).filter { !$0.isRecalled }
     }
 
     /// Reads only the newest month file and returns its last well-formed line.
     func readLastMessage(accountDir: URL, convId: String) -> Message? {
         let files = messageFiles(accountDir: accountDir, convId: convId)
         for file in files.reversed() {
-            let msgs = Self.parseJSONL(file)
+            let msgs = Self.dedupe(Self.parseJSONL(file)).filter { !$0.isRecalled }
             if let newest = msgs.max(by: { $0.timestamp < $1.timestamp }) { return newest }
         }
         return nil

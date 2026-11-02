@@ -233,8 +233,15 @@ struct Message: Codable, Identifiable, Hashable {
     let attachments: [Attachment]
     let originToken: String?
     let subject: String?
+    /// LinkedIn's render hint (DEFAULT, SYSTEM, RECALLED…); nil on records the
+    /// CLI wrote before it captured the field.
+    var renderFormat: String? = nil
 
     var date: Date { Date(timeIntervalSince1970: Double(timestamp) / 1000) }
+
+    /// Deleted by its sender. LinkedIn keeps the row with an empty body, which
+    /// would otherwise render as an empty bubble.
+    var isRecalled: Bool { renderFormat == "RECALLED" }
 
     /// Body, or a placeholder for attachment-only messages.
     var previewText: String {

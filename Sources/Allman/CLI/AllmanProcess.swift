@@ -219,8 +219,11 @@ enum AllmanRunner {
         return try await run(arguments, context: context, timeout: timeout)
     }
 
-    static func runJSON<T: Decodable>(_ arguments: [String], as type: T.Type, context: Context, timeout: TimeInterval = 120) async throws -> T {
-        let raw = try await runWithRetry(arguments, context: context, timeout: timeout)
+    /// `attempts: 1` for anything that is not safe to repeat — a send that
+    /// LinkedIn accepted but the CLI then failed on (a store commit, say) must
+    /// surface as "Not Delivered", never run again.
+    static func runJSON<T: Decodable>(_ arguments: [String], as type: T.Type, context: Context, timeout: TimeInterval = 120, attempts: Int = 4) async throws -> T {
+        let raw = try await runWithRetry(arguments, context: context, timeout: timeout, attempts: attempts)
         // Commands print exactly one JSON document in --json mode; take the last line that parses.
         for line in raw.split(separator: "\n").reversed() {
             if let data = line.data(using: .utf8), let v = try? JSONDecoder().decode(T.self, from: data) { return v }

@@ -126,9 +126,11 @@ struct ConversationRecord: Codable, Identifiable, Hashable {
         return nil
     }
 
-    /// Best `allman send` / `allman react` target: slug when known, else the conversation id
-    /// (a group has no slug alias; the CLI resolves the bare `2-…` id).
-    var sendTarget: String { isGroupThread ? convId : (slug ?? convUrn ?? backendUrn ?? convId) }
+    /// The `allman send` / `react` / `read` target for this thread: always the conversation
+    /// itself (its thread URN, or the bare `2-…` id for a group), never the contact's slug. A
+    /// slug is an alias the CLI resolves on its own, and a wrong or shared one lands in another
+    /// thread. The thread URN is preferred over `convUrn`, whose comma reads as a recipient list.
+    var sendTarget: String { isGroupThread ? convId : (backendUrn ?? convUrn ?? convId) }
 
     var avatarURL: URL? { isGroupThread ? nil : Self.pick(profilePictures) }
 

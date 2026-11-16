@@ -43,7 +43,7 @@ final class StoreReaderTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: store) }
         let rec = try XCTUnwrap(StoreReader(storeURL: store).readRecord(accountDir: account, convId: "2-TESTCONV=="))
         XCTAssertEqual(rec.displayName, "Jamie Rivera")
-        XCTAssertEqual(rec.sendTarget, "jamie-rivera")
+        XCTAssertEqual(rec.sendTarget, "urn:li:messagingThread:2-TESTCONV==", "addresses the thread, not the contact's slug")
         XCTAssertEqual(rec.avatarURL?.absoluteString, "https://example.com/200.jpg", "picks the ~200px rendition")
         XCTAssertEqual(rec.linkedInProfileURL?.absoluteString, "https://www.linkedin.com/in/jamie-rivera/")
         XCTAssertNotNil(rec.lastActivityDate)
